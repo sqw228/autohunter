@@ -145,16 +145,28 @@ def create_app(db, source, bot_token):
     @app.get("/api/catalog/brands")
     async def brands(request: Request):
         chat_id_from_request(request)
-        return [{"id": value, "name": name} for name, value in await source.get_marks()]
+        try:
+            items = await source.get_marks()
+        except Exception:
+            items = []
+        return [{"id": value, "name": name} for name, value in items]
 
     @app.get("/api/catalog/brands/{brand_id}/models")
     async def models(brand_id: int, request: Request):
         chat_id_from_request(request)
-        return [{"id": value, "name": name} for name, value in await source.get_models(brand_id)]
+        try:
+            items = await source.get_models(brand_id)
+        except Exception:
+            items = []
+        return [{"id": value, "name": name} for name, value in items]
 
     @app.get("/api/catalog/regions")
     async def regions(request: Request):
         chat_id_from_request(request)
-        return [{"id": value, "name": name} for name, value in await source.get_states()]
+        try:
+            items = await source.get_states()
+        except Exception:
+            items = []
+        return [{"id": value, "name": name} for name, value in items]
 
     return app

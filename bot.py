@@ -139,9 +139,25 @@ async def settings_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "set_brand")
 async def set_brand_handler(callback: CallbackQuery):
-    items = await _source.get_marks()
-    await callback.message.edit_text("🚗 <b>Выбери марку</b>:", parse_mode="HTML", reply_markup=page_menu(items, "brand", 0))
-    await callback.answer()
+    await callback.answer("Загружаю марки…")
+    try:
+        items = await _source.get_marks()
+        if not items:
+            await callback.message.edit_text(
+                "Не удалось получить список марок из AUTO.RIA. Попробуй ещё раз через минуту.",
+                reply_markup=settings_menu(),
+            )
+            return
+        await callback.message.edit_text(
+            "🚗 <b>Выбери марку</b>:",
+            parse_mode="HTML",
+            reply_markup=page_menu(items, "brand", 0),
+        )
+    except Exception:
+        await callback.message.edit_text(
+            "⚠️ AUTO.RIA не вернул список марок. Проверь логи Railway.",
+            reply_markup=settings_menu(),
+        )
 
 
 @dp.callback_query(lambda c: c.data == "set_model")
@@ -150,16 +166,48 @@ async def set_model_handler(callback: CallbackQuery):
     if not s.get('brand_id'):
         await callback.answer("Сначала выбери марку", show_alert=True)
         return
-    items = await _source.get_models(s['brand_id'])
-    await callback.message.edit_text("🚘 <b>Выбери модель</b>:", parse_mode="HTML", reply_markup=page_menu(items, "model", 0))
-    await callback.answer()
+    await callback.answer("Загружаю модели…")
+    try:
+        items = await _source.get_models(s['brand_id'])
+        if not items:
+            await callback.message.edit_text(
+                "Не удалось получить список моделей из AUTO.RIA. Попробуй ещё раз через минуту.",
+                reply_markup=settings_menu(),
+            )
+            return
+        await callback.message.edit_text(
+            "🚘 <b>Выбери модель</b>:",
+            parse_mode="HTML",
+            reply_markup=page_menu(items, "model", 0),
+        )
+    except Exception:
+        await callback.message.edit_text(
+            "⚠️ AUTO.RIA не вернул список моделей. Проверь логи Railway.",
+            reply_markup=settings_menu(),
+        )
 
 
 @dp.callback_query(lambda c: c.data == "set_region")
 async def set_region_handler(callback: CallbackQuery):
-    items = await _source.get_states()
-    await callback.message.edit_text("📍 <b>Выбери регион</b>:", parse_mode="HTML", reply_markup=page_menu(items, "region", 0))
-    await callback.answer()
+    await callback.answer("Загружаю регионы…")
+    try:
+        items = await _source.get_states()
+        if not items:
+            await callback.message.edit_text(
+                "Не удалось получить список регионов из AUTO.RIA. Попробуй ещё раз через минуту.",
+                reply_markup=settings_menu(),
+            )
+            return
+        await callback.message.edit_text(
+            "📍 <b>Выбери регион</b>:",
+            parse_mode="HTML",
+            reply_markup=page_menu(items, "region", 0),
+        )
+    except Exception:
+        await callback.message.edit_text(
+            "⚠️ AUTO.RIA не вернул список регионов. Проверь логи Railway.",
+            reply_markup=settings_menu(),
+        )
 
 
 @dp.callback_query(lambda c: c.data.startswith("page_brand_"))

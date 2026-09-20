@@ -29,11 +29,14 @@ class CarListing:
     title: str | None = None
     description: str | None = None
     published_at: datetime | None = None
+    transmission: str | None = None
+    fuel: str | None = None
 
 
 class AutoriaSource:
-    def __init__(self):
+    def __init__(self, db=None):
         self.api_key = settings.autoria_api_key
+        self.db = db
         self.client = httpx.AsyncClient(timeout=20.0)
         self.retry_after_until = 0.0
         self.page = 0
@@ -74,11 +77,6 @@ class AutoriaSource:
             raise RuntimeError(f"AUTO.RIA API returned HTTP 429; cooldown {cooldown} seconds")
         r.raise_for_status()
         data = r.json()
-        safe_raw = repr(data)
-        if self.api_key:
-            safe_raw = safe_raw.replace(self.api_key, "***")
-        print(f"AUTO.RIA response: status={r.status_code}, type={type(data).__name__}")
-        print(f"AUTO.RIA response preview: {safe_raw[:2000]}")
         return data
 
     async def _get_catalog(self, url, params):
@@ -151,7 +149,8 @@ class AutoriaSource:
         if user_settings:
             if user_settings.get('brand_id'):
                 params.append(("marka_id[0]", str(user_settings['brand_id'])))
-                params.append(("model_id[0]", str(user_settings.get('model_id') or 0)))
+                if user_settings.get('model_id'):
+                    params.append(("model_id[0]", str(user_settings['model_id'])))
             if user_settings.get('region_id'):
                 params.append(("state[0]", str(user_settings['region_id'])))
                 params.append(("city[0]", "0"))
@@ -240,6 +239,12 @@ class AutoriaSource:
         if link.startswith("/"):
             link = "https://auto.ria.com" + link
         dealer = x.get("dealer") or {}
+        def text_value(value):
+            if isinstance(value, dict):
+                return first_value(value.get("name"), value.get("title"), value.get("value"))
+            return value
+        transmission = text_value(first_value(x.get("gearboxName"), x.get("gearbox"), a.get("gearboxName"), a.get("gearbox")))
+        fuel = text_value(first_value(x.get("fuelName"), x.get("fuel"), a.get("fuelName"), a.get("fuel")))
 
         return CarListing(
             source="AUTO.RIA", source_id=source_id, url=link,
@@ -251,6 +256,8 @@ class AutoriaSource:
             city=first_value(s.get("name"), x.get("locationCityName")),
             seller_type=dealer.get("type"), title=x.get("title"),
             description=first_value(x.get("description"), a.get("description")),
+            transmission=str(transmission) if transmission else None,
+            fuel=str(fuel) if fuel else None,
             published_at=_parse_date(x.get("addDate") or a.get("addDate")),
         )
 

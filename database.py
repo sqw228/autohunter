@@ -39,6 +39,16 @@ CREATE TABLE IF NOT EXISTS sent_notifications (
 );
 CREATE TABLE IF NOT EXISTS market_cache (cache_key TEXT PRIMARY KEY, median_usd DOUBLE PRECISION,
  cached_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS favorites (
+ chat_id BIGINT NOT NULL REFERENCES subscribers(chat_id) ON DELETE CASCADE,
+ source TEXT NOT NULL, source_id TEXT NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ PRIMARY KEY(chat_id, source, source_id)
+);
+CREATE TABLE IF NOT EXISTS app_preferences (
+ chat_id BIGINT PRIMARY KEY REFERENCES subscribers(chat_id) ON DELETE CASCADE,
+ language TEXT NOT NULL DEFAULT 'ru'
+);
 '''
 
 
@@ -64,6 +74,11 @@ class Database:
                 'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS region_name TEXT',
             ):
                 await c.execute(sql)
+            await c.execute('''
+                INSERT INTO app_preferences(chat_id)
+                SELECT chat_id FROM subscribers
+                ON CONFLICT(chat_id) DO NOTHING
+            ''')
             await c.execute('''
                 INSERT INTO subscriber_settings(chat_id)
                 SELECT chat_id FROM subscribers
@@ -220,3 +235,94 @@ class Database:
                 'ON CONFLICT(cache_key) DO UPDATE SET median_usd=EXCLUDED.median_usd,cached_at=NOW()',
                 key, value
             )
+
+
+    async def get_listings_for_user(self, chat_id: int, limit: int = 100):
+        async with self.pool.acquire() as c:
+            return [dict(r) for r in await c.fetch('''
+                SELECT l.*, mc.median_usd,
+                       CASE WHEN mc.median_usd IS NOT NULL AND mc.median_usd > 0
+                            THEN ROUND((1 - l.price_usd / mc.median_usd) * 100, 1)
+                            ELSE NULL END AS discount_percent,
+                       EXISTS(
+                         SELECT 1 FROM favorites f
+                         WHERE f.chat_id=$1 AND f.source=l.source AND f.source_id=l.source_id
+                       ) AS is_favorite
+                FROM listings l
+                LEFT JOIN market_cache mc
+                  ON mc.cache_key = ('ria:' || COALESCE(l.brand_id,0) || ':' ||
+                                     COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
+                WHERE l.price_usd IS NOT NULL
+                ORDER BY l.first_seen_at DESC
+                LIMIT $2
+            ''', chat_id, limit)]
+
+    async def get_favorites(self, chat_id: int, limit: int = 100):
+        async with self.pool.acquire() as c:
+            return [dict(r) for r in await c.fetch('''
+                SELECT l.*, mc.median_usd,
+                       CASE WHEN mc.median_usd IS NOT NULL AND mc.median_usd > 0
+                            THEN ROUND((1 - l.price_usd / mc.median_usd) * 100, 1)
+                            ELSE NULL END AS discount_percent,
+                       TRUE AS is_favorite
+                FROM favorites f
+                JOIN listings l ON l.source=f.source AND l.source_id=f.source_id
+                LEFT JOIN market_cache mc
+                  ON mc.cache_key = ('ria:' || COALESCE(l.brand_id,0) || ':' ||
+                                     COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
+                WHERE f.chat_id=$1
+                ORDER BY f.created_at DESC
+                LIMIT $2
+            ''', chat_id, limit)]
+
+    async def set_favorite(self, chat_id: int, source: str, source_id: str, value: bool):
+        async with self.pool.acquire() as c:
+            if value:
+                await c.execute('''
+                    INSERT INTO favorites(chat_id,source,source_id)
+                    VALUES($1,$2,$3) ON CONFLICT DO NOTHING
+                ''', chat_id, source, source_id)
+            else:
+                await c.execute(
+                    'DELETE FROM favorites WHERE chat_id=$1 AND source=$2 AND source_id=$3',
+                    chat_id, source, source_id
+                )
+
+    async def get_stats(self, chat_id: int):
+        async with self.pool.acquire() as c:
+            r = await c.fetchrow('''
+                SELECT
+                  COUNT(*) FILTER (WHERE l.first_seen_at >= NOW()-INTERVAL '24 hours') AS found_today,
+                  COUNT(*) FILTER (
+                    WHERE l.first_seen_at >= NOW()-INTERVAL '24 hours'
+                      AND mc.median_usd IS NOT NULL AND l.price_usd < mc.median_usd
+                  ) AS below_market_today,
+                  AVG(CASE WHEN mc.median_usd IS NOT NULL AND mc.median_usd > 0
+                           THEN (1 - l.price_usd / mc.median_usd) * 100 END)
+                    FILTER (WHERE l.first_seen_at >= NOW()-INTERVAL '24 hours'
+                            AND mc.median_usd IS NOT NULL) AS avg_discount,
+                  MAX(CASE WHEN mc.median_usd IS NOT NULL AND mc.median_usd > 0
+                           THEN (1 - l.price_usd / mc.median_usd) * 100 END)
+                    FILTER (WHERE l.first_seen_at >= NOW()-INTERVAL '24 hours'
+                            AND mc.median_usd IS NOT NULL) AS max_discount,
+                  (SELECT COUNT(*) FROM favorites WHERE favorites.chat_id=$1) AS favorites_count
+                FROM listings l
+                LEFT JOIN market_cache mc
+                  ON mc.cache_key = ('ria:' || COALESCE(l.brand_id,0) || ':' ||
+                                     COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
+            ''', chat_id)
+            return dict(r)
+
+    async def get_language(self, chat_id: int):
+        async with self.pool.acquire() as c:
+            r = await c.fetchrow('SELECT language FROM app_preferences WHERE chat_id=$1', chat_id)
+            return r['language'] if r else 'ru'
+
+    async def set_language(self, chat_id: int, language: str):
+        if language not in {'ru', 'uk', 'en'}:
+            raise ValueError('Unsupported language')
+        async with self.pool.acquire() as c:
+            await c.execute('''
+                INSERT INTO app_preferences(chat_id,language) VALUES($1,$2)
+                ON CONFLICT(chat_id) DO UPDATE SET language=EXCLUDED.language
+            ''', chat_id, language)

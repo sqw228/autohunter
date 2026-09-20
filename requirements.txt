@@ -1,0 +1,3 @@
+aiogram>=3.20,<4
+httpx>=0.27,<1
+pydantic-settings>=2,<3

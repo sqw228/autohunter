@@ -149,6 +149,7 @@ async def toggle_notifications(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "settings")
 async def settings_handler(callback: CallbackQuery):
+    _user_input_mode.pop(callback.message.chat.id, None)
     await show_settings(callback)
 
 
@@ -182,30 +183,15 @@ async def set_model_handler(callback: CallbackQuery):
     _user_input_mode[callback.message.chat.id] = "model"
     s = await _db.get_settings(callback.message.chat.id)
     if not s.get('brand_id'):
+        _user_input_mode.pop(callback.message.chat.id, None)
         await callback.answer("Сначала выбери марку", show_alert=True)
         return
-    await callback.message.edit_text(search_prompt("model"), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="settings")]]))
+    await callback.message.edit_text(
+        search_prompt("model"),
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="settings")]])
+    )
     await callback.answer()
-    return
-    try:
-        items = await _source.get_models(s['brand_id'])
-        if not items:
-            await callback.message.edit_text(
-                "Не удалось получить список моделей из AUTO.RIA. Попробуй ещё раз через минуту.",
-                reply_markup=settings_menu(),
-            )
-            return
-        await callback.message.edit_text(
-            "🚘 <b>Выбери модель</b>:",
-            parse_mode="HTML",
-            reply_markup=page_menu(items, "model", 0),
-        )
-    except Exception:
-        await callback.message.edit_text(
-            "⚠️ AUTO.RIA не вернул список моделей. Проверь логи Railway.",
-            reply_markup=settings_menu(),
-        )
-
 
 @dp.callback_query(lambda c: c.data == "set_region")
 async def set_region_handler(callback: CallbackQuery):
@@ -257,6 +243,7 @@ async def page_region_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("brand_"))
 async def choose_brand_handler(callback: CallbackQuery):
+    _user_input_mode.pop(callback.message.chat.id, None)
     brand_id = int(callback.data.split("_", 1)[1])
     brand = next((x for x in await _source.get_marks() if x[1] == brand_id), None)
     if not brand:
@@ -270,6 +257,7 @@ async def choose_brand_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data.startswith("model_"))
 async def choose_model_handler(callback: CallbackQuery):
+    _user_input_mode.pop(callback.message.chat.id, None)
     model_id = int(callback.data.split("_", 1)[1])
     s = await _db.get_settings(callback.message.chat.id)
     models = await _source.get_models(s['brand_id']) if s.get('brand_id') else []
@@ -333,6 +321,7 @@ async def choose_setting_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "back_menu")
 async def back_menu_handler(callback: CallbackQuery):
+    _user_input_mode.pop(callback.message.chat.id, None)
     enabled = await _db.notifications_enabled(callback.message.chat.id)
     s = await _db.get_settings(callback.message.chat.id)
     await callback.message.edit_text(menu_text(enabled, s), parse_mode="HTML", reply_markup=main_menu(enabled))

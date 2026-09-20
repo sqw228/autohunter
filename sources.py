@@ -193,28 +193,56 @@ class AutoriaSource:
             ],
         )
 
-        if not isinstance(data, list) or not data or not isinstance(data[0], dict):
+        # AUTO.RIA currently returns listing information as a top-level dict.
+        # Older examples of the API used a one-element list, so support both.
+        if isinstance(data, list):
+            if not data or not isinstance(data[0], dict):
+                return None
+            x = data[0]
+        elif isinstance(data, dict):
+            x = data
+        else:
             return None
 
-        x = data[0]
         a = x.get("autoData") or {}
         s = x.get("stateData") or {}
 
+        def first_value(*values):
+            for value in values:
+                if value is not None and value != "":
+                    return value
+            return None
+
+        raw_mileage = first_value(
+            x.get("raceInt"),
+            x.get("mileage"),
+            a.get("raceInt"),
+            a.get("mileage"),
+        )
+
         try:
-            mileage = (
-                int(float(a.get("raceInt")) * 1000)
-                if a.get("raceInt") is not None else None
-            )
+            mileage = int(float(raw_mileage) * 1000) if raw_mileage is not None else None
         except (TypeError, ValueError):
             mileage = None
 
+        raw_year = first_value(
+            x.get("year"),
+            a.get("year"),
+        )
+
         try:
-            year = int(a.get("year")) if a.get("year") is not None else None
+            year = int(raw_year) if raw_year is not None else None
         except (TypeError, ValueError):
             year = None
 
+        raw_price = x.get("USD")
+        if raw_price is None:
+            prices = x.get("prices") or []
+            if prices and isinstance(prices[0], dict):
+                raw_price = prices[0].get("USD")
+
         try:
-            price = float(x.get("USD")) if x.get("USD") is not None else None
+            price = float(str(raw_price).replace(" ", "")) if raw_price is not None else None
         except (TypeError, ValueError):
             price = None
 
@@ -228,19 +256,19 @@ class AutoriaSource:
             source="AUTO.RIA",
             source_id=source_id,
             url=link,
-            brand=x.get("markName"),
+            brand=first_value(x.get("markName"), x.get("markNameEng")),
             model=x.get("modelName"),
-            brand_id=_as_int(x.get("markId")),
-            model_id=_as_int(x.get("modelId")),
+            brand_id=_as_int(first_value(x.get("markId"), x.get("mark_id"))),
+            model_id=_as_int(first_value(x.get("modelId"), x.get("model_id"))),
             year=year,
             mileage_km=mileage,
             price_usd=price,
-            city=s.get("name") or x.get("locationCityName"),
+            city=first_value(s.get("name"), x.get("locationCityName")),
             seller_type=dealer.get("type"),
             title=x.get("title"),
-            description=a.get("description"),
+            description=first_value(x.get("description"), a.get("description")),
             published_at=_parse_date(
-                a.get("addDate") or x.get("addDate")
+                x.get("addDate") or a.get("addDate")
             ),
         )
 

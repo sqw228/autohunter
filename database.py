@@ -24,6 +24,13 @@ CREATE TABLE IF NOT EXISTS subscriber_settings (
  max_mileage_km INTEGER,
  max_price_usd DOUBLE PRECISION
 );
+CREATE TABLE IF NOT EXISTS sent_notifications (
+ chat_id BIGINT NOT NULL REFERENCES subscribers(chat_id) ON DELETE CASCADE,
+ source TEXT NOT NULL,
+ source_id TEXT NOT NULL,
+ sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ PRIMARY KEY(chat_id, source, source_id)
+);
 CREATE TABLE IF NOT EXISTS market_cache (cache_key TEXT PRIMARY KEY, median_usd DOUBLE PRECISION,
  cached_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 '''
@@ -55,12 +62,10 @@ class Database:
     async def add_subscriber(self, chat_id: int):
         async with self.pool.acquire() as c:
             await c.execute(
-                'INSERT INTO subscribers(chat_id) VALUES($1) '
-                'ON CONFLICT(chat_id) DO NOTHING', chat_id
+                'INSERT INTO subscribers(chat_id) VALUES($1) ON CONFLICT(chat_id) DO NOTHING', chat_id
             )
             await c.execute(
-                'INSERT INTO subscriber_settings(chat_id) VALUES($1) '
-                'ON CONFLICT(chat_id) DO NOTHING', chat_id
+                'INSERT INTO subscriber_settings(chat_id) VALUES($1) ON CONFLICT(chat_id) DO NOTHING', chat_id
             )
 
     async def subscribers(self):
@@ -68,6 +73,17 @@ class Database:
             return [int(r['chat_id']) for r in await c.fetch(
                 'SELECT chat_id FROM subscribers WHERE notifications_enabled=TRUE'
             )]
+
+    async def subscriber_settings(self):
+        async with self.pool.acquire() as c:
+            rows = await c.fetch('''
+                SELECT s.chat_id, ss.min_year, ss.min_discount,
+                       ss.max_mileage_km, ss.max_price_usd
+                FROM subscribers s
+                JOIN subscriber_settings ss ON ss.chat_id=s.chat_id
+                WHERE s.notifications_enabled=TRUE
+            ''')
+            return [dict(r) for r in rows]
 
     async def notifications_enabled(self, chat_id: int):
         async with self.pool.acquire() as c:
@@ -91,10 +107,8 @@ class Database:
                 'FROM subscriber_settings WHERE chat_id=$1', chat_id
             )
             return dict(r) if r else {
-                'min_year': 2012,
-                'min_discount': 15.0,
-                'max_mileage_km': None,
-                'max_price_usd': None,
+                'min_year': 2012, 'min_discount': 15.0,
+                'max_mileage_km': None, 'max_price_usd': None,
             }
 
     async def update_setting(self, chat_id: int, field: str, value):
@@ -103,8 +117,22 @@ class Database:
             raise ValueError('Unknown setting')
         async with self.pool.acquire() as c:
             await c.execute(
-                f'UPDATE subscriber_settings SET {field}=$1 WHERE chat_id=$2',
-                value, chat_id
+                f'UPDATE subscriber_settings SET {field}=$1 WHERE chat_id=$2', value, chat_id
+            )
+
+    async def was_notified(self, chat_id: int, source: str, source_id: str):
+        async with self.pool.acquire() as c:
+            r = await c.fetchrow(
+                'SELECT 1 FROM sent_notifications WHERE chat_id=$1 AND source=$2 AND source_id=$3',
+                chat_id, source, source_id
+            )
+            return r is not None
+
+    async def mark_user_notified(self, chat_id: int, source: str, source_id: str):
+        async with self.pool.acquire() as c:
+            await c.execute(
+                'INSERT INTO sent_notifications(chat_id,source,source_id) VALUES($1,$2,$3) '
+                'ON CONFLICT(chat_id,source,source_id) DO NOTHING', chat_id, source, source_id
             )
 
     async def save_listing(self, x: CarListing):
@@ -127,8 +155,7 @@ class Database:
     async def mark_notified(self, source: str, source_id: str):
         async with self.pool.acquire() as c:
             await c.execute(
-                'UPDATE listings SET notified=TRUE WHERE source=$1 AND source_id=$2',
-                source, source_id
+                'UPDATE listings SET notified=TRUE WHERE source=$1 AND source_id=$2', source, source_id
             )
 
     async def get_market_cache(self, key: str, hours: int):

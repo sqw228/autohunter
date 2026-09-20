@@ -55,7 +55,9 @@ async def scanner_loop(bot: Bot, db: Database, source: AutoriaSource):
                             ids = await source.search_ids(search_settings)
                         except RuntimeError as e:
                             log.warning("AUTO.RIA request skipped/limited: %s", e)
-                            continue
+                            # A 429/cooldown applies to the whole API client.
+                            # Do not hammer the API with the remaining filter sets.
+                            break
                         except Exception:
                             log.exception("AUTO.RIA search failed")
                             continue
@@ -141,7 +143,7 @@ async def scanner_loop(bot: Bot, db: Database, source: AutoriaSource):
                 log.exception("scan failed")
 
             log.info(
-                "Market scan finished; sleeping %s seconds before next page",
+                "Market scan finished; sleeping %s seconds before next scan",
                 settings.check_interval_seconds
             )
             await asyncio.sleep(settings.check_interval_seconds)

@@ -67,7 +67,6 @@ class AutoriaSource:
             )
 
         await self._wait_for_local_limit()
-
         await asyncio.sleep(2)
 
         r = await self.client.get(url, params=params)
@@ -88,7 +87,16 @@ class AutoriaSource:
             )
 
         r.raise_for_status()
-        return r.json()
+
+        data = r.json()
+
+        safe_raw = repr(data)
+        if self.api_key:
+            safe_raw = safe_raw.replace(self.api_key, "***")
+        print(f"AUTO.RIA response: status={r.status_code}, type={type(data).__name__}")
+        print(f"AUTO.RIA response preview: {safe_raw[:2000]}")
+
+        return data
 
     async def search_ids(self):
         if not self.api_key:
@@ -115,57 +123,60 @@ class AutoriaSource:
 
         data = await self._get(RIA_SEARCH_URL, params)
 
-        try:
-            if isinstance(data, list):
-                print(f"AUTO.RIA search response: list length={len(data)}")
-
-                if data and isinstance(data[0], dict):
-                    print(
-                        "AUTO.RIA search response keys:",
-                        list(data[0].keys())
-                    )
-
-                    result = data[0].get("result")
-                    if isinstance(result, dict):
+        if isinstance(data, list):
+            print(f"AUTO.RIA search response: list length={len(data)}")
+            if data and isinstance(data[0], dict):
+                print("AUTO.RIA search response keys:", list(data[0].keys()))
+                result = data[0].get("result")
+                if isinstance(result, dict):
+                    print("AUTO.RIA result keys:", list(result.keys()))
+                    search_result = result.get("search_result")
+                    if isinstance(search_result, dict):
                         print(
-                            "AUTO.RIA result keys:",
-                            list(result.keys())
+                            "AUTO.RIA search_result keys:",
+                            list(search_result.keys())
                         )
 
-                        search_result = result.get("search_result")
-                        if isinstance(search_result, dict):
-                            print(
-                                "AUTO.RIA search_result keys:",
-                                list(search_result.keys())
-                            )
-
-        except Exception:
-            pass
-
-        try:
-            ids = data[0]["result"]["search_result"]["ids"]
-
-            if isinstance(ids, list):
-                result_ids = [
-                    str(x) for x in ids if x is not None
-                ][:settings.max_listings_per_check]
-
-                print(f"AUTO.RIA parsed listing IDs: {result_ids}")
-                return result_ids
-
-        except (KeyError, TypeError, IndexError):
-            pass
+                ids = (
+                    data[0].get("result", {})
+                    .get("search_result", {})
+                    .get("ids", [])
+                )
+                if isinstance(ids, list):
+                    result_ids = [
+                        str(x) for x in ids if x is not None
+                    ][:settings.max_listings_per_check]
+                    if result_ids:
+                        print(f"AUTO.RIA parsed listing IDs: {result_ids}")
+                        return result_ids
 
         if isinstance(data, dict):
-            ids = data.get("ids")
+            print("AUTO.RIA top-level dict keys:", list(data.keys()))
 
+            ids = data.get("ids")
             if isinstance(ids, list):
                 result_ids = [
                     str(x) for x in ids if x is not None
                 ][:settings.max_listings_per_check]
+                if result_ids:
+                    print(f"AUTO.RIA parsed IDs from dict: {result_ids}")
+                    return result_ids
 
-                print(f"AUTO.RIA parsed IDs from dict: {result_ids}")
-                return result_ids
+            result = data.get("result")
+            if isinstance(result, dict):
+                search_result = result.get("search_result")
+                if isinstance(search_result, dict):
+                    ids = search_result.get("ids")
+                    if isinstance(ids, list):
+                        result_ids = [
+                            str(x) for x in ids if x is not None
+                        ][:settings.max_listings_per_check]
+                        if result_ids:
+                            print(
+                                f"AUTO.RIA parsed IDs from result.search_result: "
+                                f"{result_ids}"
+                            )
+                            return result_ids
 
         print("AUTO.RIA: could not find listing IDs in search response")
         return []

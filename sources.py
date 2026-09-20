@@ -151,11 +151,23 @@ class AutoriaSource:
     async def get_states(self):
         if self._states_cache is not None:
             return self._states_cache
-        if not self.api_key:
+        if self.db:
+            cached = await self.db.get_catalog_cache("state", 0)
+            if cached:
+                self._states_cache = cached
+                return cached
+        if not self.api_key or self.retry_after_until > asyncio.get_running_loop().time():
             return []
-        data = await self._get_catalog(RIA_STATES_URL, [("api_key", self.api_key)])
-        self._states_cache = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
-        return self._states_cache
+        try:
+            data = await self._get_catalog(RIA_STATES_URL, [("api_key", self.api_key)])
+            items = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
+            self._states_cache = items
+            if self.db and items:
+                await self.db.set_catalog_cache("state", 0, items)
+            return items
+        except Exception as e:
+            print(f"AUTO.RIA states unavailable: {e}")
+            return await self.db.get_catalog_cache("state", 0) if self.db else []
 
     async def search_ids(self, user_settings=None):
         if not self.api_key:

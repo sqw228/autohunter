@@ -181,12 +181,27 @@ async def text_model_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "set_brand")
 async def set_brand_handler(callback: CallbackQuery):
+    _pending_text[callback.message.chat.id] = "brand"
+    await callback.message.edit_text(
+        "🚗 Напиши марку текстом, например: <b>BMW</b> или <b>Mazda</b>.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Выбрать из списка", callback_data="brand_list")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="settings")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "brand_list")
+async def brand_list_handler(callback: CallbackQuery):
+    _pending_text.pop(callback.message.chat.id, None)
     await callback.answer("Загружаю марки…")
     try:
         items = await _source.get_marks()
         if not items:
             await callback.message.edit_text(
-                "Не удалось получить список марок из AUTO.RIA. Попробуй ещё раз через минуту.",
+                "⚠️ Сервис временно недоступен, пробуем снова…",
                 reply_markup=settings_menu(),
             )
             return

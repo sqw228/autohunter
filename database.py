@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS app_preferences (
  chat_id BIGINT PRIMARY KEY REFERENCES subscribers(chat_id) ON DELETE CASCADE,
  language TEXT NOT NULL DEFAULT 'ru'
 );
+CREATE TABLE IF NOT EXISTS catalog_cache (
+ kind TEXT NOT NULL,
+ parent_id INTEGER NOT NULL DEFAULT 0,
+ item_id INTEGER NOT NULL,
+ name TEXT NOT NULL,
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ PRIMARY KEY(kind, parent_id, item_id)
+);
 '''
 
 
@@ -72,6 +80,10 @@ class Database:
                 'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS model_name TEXT',
                 'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS region_id INTEGER',
                 'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS region_name TEXT',
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS transmission TEXT',
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS fuel TEXT',
+                'ALTER TABLE listings ADD COLUMN IF NOT EXISTS transmission TEXT',
+                'ALTER TABLE listings ADD COLUMN IF NOT EXISTS fuel TEXT',
             ):
                 await c.execute(sql)
             await c.execute('''
@@ -110,7 +122,7 @@ class Database:
                 SELECT s.chat_id, ss.min_year, ss.min_discount,
                        ss.max_mileage_km, ss.max_price_usd,
                        ss.brand_id, ss.brand_name, ss.model_id, ss.model_name,
-                       ss.region_id, ss.region_name
+                       ss.region_id, ss.region_name, ss.transmission, ss.fuel
                 FROM subscribers s
                 JOIN subscriber_settings ss ON ss.chat_id=s.chat_id
                 WHERE s.notifications_enabled=TRUE
@@ -136,7 +148,8 @@ class Database:
         async with self.pool.acquire() as c:
             r = await c.fetchrow(
                 '''SELECT min_year, min_discount, max_mileage_km, max_price_usd,
-                          brand_id, brand_name, model_id, model_name, region_id, region_name
+                          brand_id, brand_name, model_id, model_name, region_id, region_name,
+                          transmission, fuel
                    FROM subscriber_settings WHERE chat_id=$1''', chat_id
             )
             return dict(r) if r else {
@@ -145,13 +158,14 @@ class Database:
                 'brand_id': None, 'brand_name': None,
                 'model_id': None, 'model_name': None,
                 'region_id': None, 'region_name': None,
+                'transmission': None, 'fuel': None,
             }
 
     async def update_setting(self, chat_id: int, field: str, value):
         allowed = {
             'min_year', 'min_discount', 'max_mileage_km', 'max_price_usd',
             'brand_id', 'brand_name', 'model_id', 'model_name',
-            'region_id', 'region_name',
+            'region_id', 'region_name', 'transmission', 'fuel',
         }
         if field not in allowed:
             raise ValueError('Unknown setting')
@@ -202,15 +216,16 @@ class Database:
             r = await c.fetchrow(
                 '''INSERT INTO listings(
                     source,source_id,url,brand,model,brand_id,model_id,generation,year,
-                    mileage_km,price_usd,city,seller_type,title,description,published_at
-                ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                    mileage_km,price_usd,city,seller_type,title,description,published_at,transmission,fuel
+                ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
                 ON CONFLICT(source,source_id) DO UPDATE SET
                     last_seen_at=NOW(), url=EXCLUDED.url, price_usd=EXCLUDED.price_usd,
-                    mileage_km=EXCLUDED.mileage_km, description=EXCLUDED.description
+                    mileage_km=EXCLUDED.mileage_km, description=EXCLUDED.description,
+                    transmission=EXCLUDED.transmission, fuel=EXCLUDED.fuel
                 RETURNING xmax=0 AS inserted, notified''',
                 x.source, x.source_id, x.url, x.brand, x.model, x.brand_id, x.model_id,
                 x.generation, x.year, x.mileage_km, x.price_usd, x.city, x.seller_type,
-                x.title, x.description, x.published_at,
+                x.title, x.description, x.published_at, x.transmission, x.fuel,
             )
             return bool(r['inserted']), bool(r['notified'])
 
@@ -219,6 +234,31 @@ class Database:
             await c.execute(
                 'UPDATE listings SET notified=TRUE WHERE source=$1 AND source_id=$2', source, source_id
             )
+
+    async def set_catalog_cache(self, kind: str, parent_id: int, items):
+        async with self.pool.acquire() as c:
+            await c.execute('DELETE FROM catalog_cache WHERE kind=$1 AND parent_id=$2', kind, parent_id)
+            if items:
+                await c.executemany(
+                    'INSERT INTO catalog_cache(kind,parent_id,item_id,name) VALUES($1,$2,$3,$4) '
+                    'ON CONFLICT(kind,parent_id,item_id) DO UPDATE SET name=EXCLUDED.name,updated_at=NOW()',
+                    [(kind, parent_id, int(item_id), str(name)) for name, item_id in items]
+                )
+
+    async def get_catalog_cache(self, kind: str, parent_id: int = 0):
+        async with self.pool.acquire() as c:
+            rows = await c.fetch(
+                'SELECT name,item_id FROM catalog_cache WHERE kind=$1 AND parent_id=$2 ORDER BY name',
+                kind, parent_id
+            )
+            return [(r['name'], int(r['item_id'])) for r in rows]
+
+    async def find_catalog(self, kind: str, query: str, parent_id: int = 0):
+        q = (query or '').strip().lower()
+        items = await self.get_catalog_cache(kind, parent_id)
+        if not q:
+            return items
+        return [x for x in items if q in x[0].lower()]
 
     async def get_market_cache(self, key: str, hours: int):
         async with self.pool.acquire() as c:
@@ -252,7 +292,16 @@ class Database:
                 LEFT JOIN market_cache mc
                   ON mc.cache_key = ('ria:' || COALESCE(l.brand_id,0) || ':' ||
                                      COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
+                JOIN subscriber_settings ss ON ss.chat_id=$1
                 WHERE l.price_usd IS NOT NULL
+                  AND (ss.brand_id IS NULL OR l.brand_id=ss.brand_id)
+                  AND (ss.model_id IS NULL OR l.model_id=ss.model_id)
+                  AND (l.year IS NULL OR l.year >= ss.min_year)
+                  AND (ss.max_mileage_km IS NULL OR l.mileage_km IS NULL OR l.mileage_km <= ss.max_mileage_km)
+                  AND (ss.max_price_usd IS NULL OR l.price_usd <= ss.max_price_usd)
+                  AND (ss.transmission IS NULL OR LOWER(COALESCE(l.transmission,'')) LIKE LOWER('%' || ss.transmission || '%'))
+                  AND (ss.fuel IS NULL OR LOWER(COALESCE(l.fuel,'')) LIKE LOWER('%' || ss.fuel || '%'))
+                  AND (mc.median_usd IS NULL OR l.price_usd <= mc.median_usd * (1 - ss.min_discount / 100.0))
                 ORDER BY l.first_seen_at DESC
                 LIMIT $2
             ''', chat_id, limit)]

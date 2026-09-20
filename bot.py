@@ -416,26 +416,27 @@ async def text_filter_handler(message: Message):
             if not matches:
                 await message.answer("Марку не нашли. Попробуй другое написание, например BMW или Mazda.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="set_brand")]]))
                 return
-            if len(matches) == 1:
-                await _db.set_brand(message.chat.id, matches[0][1], matches[0][0])
-                await notify_empty_monitoring(message.chat.id)
-                await message.answer(settings_text(await _db.get_settings(message.chat.id)), parse_mode="HTML", reply_markup=settings_menu())
-                return
-            await message.answer("Нашёл несколько вариантов:", reply_markup=page_menu(matches, "brand", 0))
+            await message.answer(
+                f"Нашёл варианты по запросу «{query}». Выбери нужную марку:",
+                reply_markup=page_menu(matches, "brand", 0),
+            )
         else:
             s = await _db.get_settings(message.chat.id)
             matches = await _source.find_catalog("model", query, int(s["brand_id"]))
             if not matches:
                 await message.answer("Модель не нашли. Попробуй другое написание.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="set_model")]]))
                 return
-            if len(matches) == 1:
-                await _db.set_model(message.chat.id, matches[0][1], matches[0][0])
-                await notify_empty_monitoring(message.chat.id)
-                await message.answer(settings_text(await _db.get_settings(message.chat.id)), parse_mode="HTML", reply_markup=settings_menu())
-                return
-            await message.answer("Нашёл несколько вариантов:", reply_markup=page_menu(matches, "model", 0))
+            await message.answer(
+                f"Нашёл варианты по запросу «{query}». Выбери нужную модель:",
+                reply_markup=page_menu(matches, "model", 0),
+            )
     except Exception:
-        await message.answer("⚠️ Сервис временно недоступен, пробуем снова…", reply_markup=settings_menu())
+        await message.answer(
+            "⚠️ Не удалось выполнить поиск по доступному каталогу. Попробуй другое написание.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="◀️ Назад", callback_data="set_brand" if kind == "brand" else "set_model")]
+            ]),
+        )
 
 
 @dp.message()

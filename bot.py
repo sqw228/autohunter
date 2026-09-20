@@ -179,11 +179,12 @@ async def text_model_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "set_brand")
 async def set_brand_handler(callback: CallbackQuery):
-    _pending_text[callback.message.chat.id] = "brand"
+    _pending_text.pop(callback.message.chat.id, None)
     await callback.message.edit_text(
-        "🚗 Напиши марку текстом, например: <b>BMW</b> или <b>Mazda</b>.",
+        "🚗 <b>Выбор марки</b>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔎 Поиск марки вручную", callback_data="text_brand")],
             [InlineKeyboardButton(text="📋 Выбрать из списка", callback_data="brand_list")],
             [InlineKeyboardButton(text="◀️ Назад", callback_data="settings")],
         ]),
@@ -221,11 +222,12 @@ async def set_model_handler(callback: CallbackQuery):
     if not s.get('brand_id'):
         await callback.answer("Сначала выбери марку", show_alert=True)
         return
-    _pending_text[callback.message.chat.id] = "model"
+    _pending_text.pop(callback.message.chat.id, None)
     await callback.message.edit_text(
-        "🚘 Напиши модель текстом, например: <b>X5</b> или <b>CX-5</b>.",
+        "🚘 <b>Выбор модели</b>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔎 Поиск модели вручную", callback_data="text_model")],
             [InlineKeyboardButton(text="📋 Выбрать из списка", callback_data="model_list")],
             [InlineKeyboardButton(text="◀️ Назад", callback_data="settings")],
         ]),

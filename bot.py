@@ -10,6 +10,7 @@ dp = Dispatcher()
 _db = None
 _source = None
 PAGE_SIZE = 8
+_user_input_mode = {}
 
 
 def set_database(db):
@@ -74,6 +75,17 @@ def page_menu(items, prefix, page, back="settings"):
     rows.append([InlineKeyboardButton(text="◀️ Назад", callback_data=back)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
+
+def catalog_search_menu(items, prefix, back="settings"):
+    rows = [[InlineKeyboardButton(text=name[:60], callback_data=f"{prefix}_{value}")] for name, value in items[:20]]
+    rows.append([InlineKeyboardButton(text="◀️ Назад", callback_data=back)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+def search_prompt(kind):
+    return {
+        "brand": "🚗 <b>Поиск марки</b>\n\nНапиши название марки сообщением.\nНапример: <code>BMW</code>",
+        "model": "🚘 <b>Поиск модели</b>\n\nНапиши название модели сообщением.\nНапример: <code>X5</code>",
+    }[kind]
 
 def settings_text(s):
     mileage = f"{s['max_mileage_km']:,} км".replace(",", " ") if s['max_mileage_km'] else "без ограничения"
@@ -142,7 +154,9 @@ async def settings_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "set_brand")
 async def set_brand_handler(callback: CallbackQuery):
-    await callback.answer("Загружаю марки…")
+    _user_input_mode[callback.message.chat.id] = "brand"
+    await callback.message.edit_text(search_prompt("brand"), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="settings")]]))
+    await callback.answer()
     try:
         items = await _source.get_marks()
         if not items:
@@ -165,11 +179,14 @@ async def set_brand_handler(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "set_model")
 async def set_model_handler(callback: CallbackQuery):
+    _user_input_mode[callback.message.chat.id] = "model"
     s = await _db.get_settings(callback.message.chat.id)
     if not s.get('brand_id'):
         await callback.answer("Сначала выбери марку", show_alert=True)
         return
-    await callback.answer("Загружаю модели…")
+    await callback.message.edit_text(search_prompt("model"), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="settings")]]))
+    await callback.answer()
+    return
     try:
         items = await _source.get_models(s['brand_id'])
         if not items:
@@ -321,6 +338,30 @@ async def back_menu_handler(callback: CallbackQuery):
     await callback.message.edit_text(menu_text(enabled, s), parse_mode="HTML", reply_markup=main_menu(enabled))
     await callback.answer()
 
+
+@dp.message()
+async def catalog_text_search_handler(message: Message):
+    chat_id = message.chat.id
+    kind = _user_input_mode.get(chat_id)
+    if kind not in {"brand", "model"}:
+        return
+    query = (message.text or "").strip().lower()
+    if not query:
+        await message.answer("Напиши название для поиска.")
+        return
+    try:
+        items = await _source.get_marks() if kind == "brand" else await _source.get_models((await _db.get_settings(chat_id))["brand_id"])
+        matches = [(name, value) for name, value in items if query in name.lower()][:20]
+        if not matches:
+            await message.answer("Ничего не найдено. Попробуй другое название.")
+            return
+        await message.answer(
+            "🚗 <b>Выбери марку:</b>" if kind == "brand" else "🚘 <b>Выбери модель:</b>",
+            parse_mode="HTML",
+            reply_markup=catalog_search_menu(matches, kind)
+        )
+    except Exception:
+        await message.answer("⚠️ Не удалось получить каталог AUTO.RIA. Попробуй ещё раз позже.")
 
 @dp.message()
 async def fallback_handler(message: Message):

@@ -49,7 +49,7 @@ def settings_text(s):
     price = f"${s['max_price_usd']:,.0f}".replace(",", " ") if s['max_price_usd'] else "без ограничения"
     return (
         "⚙️ <b>Мои настройки</b>\n\n"
-        f"📅 Минимальный год: <b>{s['min_year}+</b>\n"
+        f"📅 Минимальный год: <b>{s['min_year']}+</b>\n"
         f"📉 Минимальная скидка: <b>{s['min_discount']:g}%</b>\n"
         f"🛣 Максимальный пробег: <b>{mileage}</b>\n"
         f"💰 Максимальная цена: <b>{price}</b>\n"
@@ -103,10 +103,7 @@ async def settings_handler(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data in {"set_year", "set_discount", "set_mileage", "set_price"})
 async def setting_choice_handler(callback: CallbackQuery):
     kind = callback.data.removeprefix("set_")
-    await callback.message.edit_text(
-        "Выбери значение:",
-        reply_markup=choices_menu(kind),
-    )
+    await callback.message.edit_text("Выбери значение:", reply_markup=choices_menu(kind))
     await callback.answer()
 
 

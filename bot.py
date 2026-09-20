@@ -124,6 +124,8 @@ def menu_text(enabled, s):
         f"📍 Регион: <b>{s.get('region_name') or 'вся Украина'}</b>\n"
         f"📅 Год: <b>{s['min_year']}+</b>\n"
         f"📉 Минимальная скидка: <b>{s['min_discount']:g}%</b>\n"
+        f"⚙️ КПП: <b>{s.get('transmission') or 'любая'}</b>\n"
+        f"⛽ Топливо: <b>{s.get('fuel') or 'любое'}</b>\n"
         f"🔎 Проверка: каждые <b>{settings.check_interval_seconds // 60} мин</b>\n\n"
         "Источник: <b>AUTO.RIA</b>."
     )

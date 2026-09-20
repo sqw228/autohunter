@@ -32,22 +32,22 @@ class AutoriaSource:
         self.api_key = settings.autoria_api_key
         self.client = httpx.AsyncClient(timeout=20.0)
         self.retry_after_until = 0.0
+        self.page = 0
 
     async def close(self):
         await self.client.aclose()
 
     async def _get(self, url, params):
-        wait = self.retry_after_until - asyncio.get_running_loop().time()
+        loop = asyncio.get_running_loop()
+        wait = self.retry_after_until - loop.time()
         if wait > 0:
-            raise httpx.HTTPStatusError(
-                "AUTO.RIA API rate limit cooldown",
-                request=httpx.Request("GET", url),
-                response=httpx.Response(429, request=httpx.Request("GET", url)),
-            )
+            raise RuntimeError("AUTO.RIA API rate-limit cooldown is active")
 
         r = await self.client.get(url, params=params)
         if r.status_code == 429:
-            self.retry_after_until = asyncio.get_running_loop().time() + settings.autoria_retry_after_seconds
+            self.retry_after_until = loop.time() + settings.autoria_retry_after_seconds
+            raise RuntimeError("AUTO.RIA API returned HTTP 429")
+
         r.raise_for_status()
         return r.json()
 
@@ -56,6 +56,9 @@ class AutoriaSource:
             return []
 
         now = datetime.now().astimezone()
+        current_page = self.page
+        self.page += 1
+
         params = [
             ("api_key", self.api_key),
             ("category_id", "1"),
@@ -63,7 +66,7 @@ class AutoriaSource:
             ("po_yers[0]", str(now.year)),
             ("currency", "1"),
             ("countpage", str(settings.max_listings_per_check)),
-            ("page", "0"),
+            ("page", str(current_page)),
             ("with_photo", "1"),
         ]
 
@@ -144,7 +147,7 @@ class AutoriaSource:
 
         try:
             data = await self._get(RIA_AVERAGE_URL, p)
-        except httpx.HTTPStatusError:
+        except (RuntimeError, httpx.HTTPStatusError):
             return None
 
         if not isinstance(data, dict):

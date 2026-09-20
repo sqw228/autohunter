@@ -68,7 +68,7 @@ class AutoriaSource:
                           _as_int(x.get("markId")),_as_int(x.get("modelId")),year=year,mileage_km=mileage,
                           price_usd=price,city=s.get("name") or x.get("locationCityName"),
                           seller_type=dealer.get("type"),title=x.get("title"),description=a.get("description"),
-                          published_at=a.get("addDate") or x.get("addDate"))
+                          published_at=_parse_date(a.get("addDate") or x.get("addDate")))
 
     async def get_market_median(self,listing):
         if not self.api_key or not listing.brand_id or not listing.model_id: return None
@@ -89,3 +89,9 @@ def _as_int(value):
 
 class OlxSource:
     async def search(self): return []
+
+
+def _parse_date(value):
+    if not value: return None
+    try: return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError): return None

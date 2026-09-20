@@ -20,10 +20,13 @@ async def run_web():
         return
 
     import uvicorn
-    from bot import _db, _source
+    import bot as bot_module
     from webapp import create_app
 
-    app = create_app(_db, _source, settings.telegram_bot_token)
+    while bot_module._db is None or bot_module._source is None:
+        await asyncio.sleep(0.25)
+
+    app = create_app(bot_module._db, bot_module._source, settings.telegram_bot_token)
     config = uvicorn.Config(
         app,
         host="0.0.0.0",

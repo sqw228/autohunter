@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>AutoHunter</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #f4f5f7);
+      --card: var(--tg-theme-secondary-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #111111);
+      --hint: var(--tg-theme-hint-color, #777777);
+      --accent: var(--tg-theme-button-color, #2481cc);
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; padding:18px 14px 28px; background:var(--bg); color:var(--text); font-family:Arial,sans-serif; }
+    h1 { margin:4px 0 4px; font-size:27px; }
+    .sub { color:var(--hint); margin-bottom:18px; }
+    .card { background:var(--card); border-radius:18px; padding:16px; margin-bottom:12px; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:12px 0; }
+    label { font-size:14px; color:var(--hint); display:block; margin-bottom:6px; }
+    select,input { width:100%; border:1px solid rgba(128,128,128,.25); border-radius:12px; padding:12px; background:var(--bg); color:var(--text); font-size:16px; }
+    .field { margin-bottom:13px; }
+    button { width:100%; border:0; border-radius:13px; padding:13px; background:var(--accent); color:white; font-size:16px; font-weight:700; }
+    .status { text-align:center; color:var(--hint); min-height:22px; margin:8px 0; }
+    .pill { padding:6px 10px; border-radius:20px; background:rgba(36,129,204,.12); color:var(--accent); font-size:13px; }
+  </style>
+</head>
+<body>
+  <h1>🚗 AutoHunter</h1>
+  <div class="sub">Поиск автомобилей ниже рыночной цены</div>
+
+  <div class="card">
+    <div class="row"><strong>Мои фильтры</strong><span class="pill">AUTO.RIA</span></div>
+
+    <div class="field">
+      <label>Марка</label>
+      <select id="brand"><option value="">Любая марка</option></select>
+    </div>
+
+    <div class="field">
+      <label>Модель</label>
+      <select id="model" disabled><option value="">Любая модель</option></select>
+    </div>
+
+    <div class="field">
+      <label>Регион</label>
+      <select id="region"><option value="">Вся Украина</option></select>
+    </div>
+
+    <div class="field">
+      <label>Минимальный год</label>
+      <select id="year">
+        <option>2012</option><option>2015</option><option>2018</option>
+        <option>2020</option><option>2022</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Минимальная скидка от рынка, %</label>
+      <select id="discount">
+        <option>10</option><option>15</option><option>20</option>
+        <option>25</option><option>30</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Максимальный пробег, км</label>
+      <select id="mileage">
+        <option value="">Без ограничения</option>
+        <option>100000</option><option>150000</option><option>200000</option><option>250000</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Максимальная цена, USD</label>
+      <select id="price">
+        <option value="">Без ограничения</option>
+        <option>10000</option><option>20000</option><option>30000</option><option>50000</option>
+      </select>
+    </div>
+
+    <div class="status" id="status">Загрузка…</div>
+    <button onclick="save()">💾 Сохранить фильтры</button>
+  </div>
+
+<script>
+const tg = window.Telegram.WebApp;
+tg.ready();
+tg.expand();
+
+const headers = {"X-Telegram-Init-Data": tg.initData};
+let settings = null;
+let brands = [];
+let regions = [];
+
+async function api(url, options={}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: {...headers, ...(options.headers || {}), "Content-Type":"application/json"}
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function setStatus(text) { document.getElementById("status").textContent = text; }
+
+async function loadCatalogs() {
+  [brands, regions] = await Promise.all([
+    api("/api/catalog/brands"),
+    api("/api/catalog/regions")
+  ]);
+
+  const brand = document.getElementById("brand");
+  brands.forEach(x => brand.add(new Option(x.name, x.id)));
+
+  const region = document.getElementById("region");
+  regions.forEach(x => region.add(new Option(x.name, x.id)));
+
+  brand.addEventListener("change", loadModels);
+}
+
+async function loadModels() {
+  const brandId = document.getElementById("brand").value;
+  const model = document.getElementById("model");
+  model.innerHTML = '<option value="">Любая модель</option>';
+  model.disabled = !brandId;
+  if (!brandId) return;
+  const items = await api("/api/catalog/brands/" + brandId + "/models");
+  items.forEach(x => model.add(new Option(x.name, x.id)));
+}
+
+function applySettings(s) {
+  settings = s;
+  document.getElementById("brand").value = s.brand_id || "";
+  document.getElementById("region").value = s.region_id || "";
+  document.getElementById("year").value = s.min_year;
+  document.getElementById("discount").value = s.min_discount;
+  document.getElementById("mileage").value = s.max_mileage_km || "";
+  document.getElementById("price").value = s.max_price_usd || "";
+  if (s.brand_id) {
+    loadModels().then(() => {
+      document.getElementById("model").value = s.model_id || "";
+    });
+  }
+}
+
+async function save() {
+  try {
+    setStatus("Сохраняю…");
+    const brandId = Number(document.getElementById("brand").value) || null;
+    const modelId = Number(document.getElementById("model").value) || null;
+    const regionId = Number(document.getElementById("region").value) || null;
+    const brandObj = brands.find(x => x.id === brandId);
+    const modelObj = [...document.getElementById("model").options].find(x => Number(x.value) === modelId);
+    const regionObj = regions.find(x => x.id === regionId);
+
+    const payload = {
+      min_year: Number(document.getElementById("year").value),
+      min_discount: Number(document.getElementById("discount").value),
+      max_mileage_km: document.getElementById("mileage").value ? Number(document.getElementById("mileage").value) : null,
+      max_price_usd: document.getElementById("price").value ? Number(document.getElementById("price").value) : null,
+      brand_id: brandId,
+      brand_name: brandObj ? brandObj.name : null,
+      model_id: modelId,
+      model_name: modelObj ? modelObj.text : null,
+      region_id: regionId,
+      region_name: regionObj ? regionObj.name : null
+    };
+
+    const updated = await api("/api/settings", {method:"POST", body:JSON.stringify(payload)});
+    applySettings(updated);
+    setStatus("Сохранено ✅");
+    tg.HapticFeedback.notificationOccurred("success");
+  } catch (e) {
+    setStatus("Ошибка: " + e.message);
+  }
+}
+
+(async function() {
+  try {
+    if (!tg.initData) throw new Error("Открой приложение из Telegram");
+    await loadCatalogs();
+    const s = await api("/api/me");
+    applySettings(s);
+    setStatus("Готово");
+  } catch (e) {
+    setStatus("Не удалось загрузить данные");
+  }
+})();
+</script>
+</body>
+</html>

@@ -91,16 +91,27 @@ class AutoriaSource:
             items = data
         elif isinstance(data, dict):
             items = data.get("result") or data.get("items") or data.get("data") or []
+            if isinstance(items, dict):
+                items = items.get("items") or items.get("result") or items.get("data") or []
         else:
             items = []
         out = []
         for item in items:
             if not isinstance(item, dict):
                 continue
-            name = item.get("name") or item.get("title")
-            value = item.get("value") or item.get("marka_id") or item.get("model_id")
+            name = item.get("name") or item.get("title") or item.get("name_ru") or item.get("name_uk")
+            value = (
+                item.get("value")
+                or item.get("id")
+                or item.get("marka_id")
+                or item.get("model_id")
+                or item.get("state_id")
+            )
             if name and value is not None:
-                out.append((str(name), int(value)))
+                try:
+                    out.append((str(name), int(value)))
+                except (TypeError, ValueError):
+                    continue
         return out
 
     async def get_marks(self):
@@ -175,6 +186,7 @@ class AutoriaSource:
 
         now = datetime.now().astimezone()
         current_page = self.page
+        self.page = (self.page + 1) % 20
         params = [
             ("api_key", self.api_key),
             ("category_id", "1"),

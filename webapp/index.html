@@ -91,7 +91,7 @@ select:focus,input:focus{border-color:rgba(255,106,0,.55);box-shadow:0 0 0 3px r
 <script>
 const tg=window.Telegram.WebApp;tg.ready();tg.expand();
 const headers={"X-Telegram-Init-Data":tg.initData};
-let lang='ru',brands=[],regions=[],settings=null;
+let lang='ru',brands=[],regions=[],modelCatalog=[],settings=null;
 const T={
 ru:{sub:'Поиск автомобилей ниже рыночной цены',home:'Находки',search:'Поиск',fav:'Избранное',settings:'Настройки',findsTitle:'Свежие находки',found:'Найдено за 24 часа',below:'Ниже рынка',avg:'Средняя скидка',max:'Максимальная скидка',brand:'Марка',model:'Модель',region:'Регион',year:'Минимальный год',discount:'Минимальная скидка от рынка, %',mileage:'Максимальный пробег, км',price:'Максимальная цена, USD',transmission:'Тип КПП',fuel:'Тип топлива',save:'💾 Сохранить фильтры',manualBrand:'Поиск марки вручную',manualModel:'Поиск модели вручную',manualSearchBtn:'Найти',langTitle:'Язык приложения',settingsInfo:'Настройки сохраняются автоматически в вашем аккаунте',saved:'Сохранено ✅',error:'Ошибка',anyBrand:'Любая марка',anyModel:'Любая модель',allRegions:'Вся Украина',noLimit:'Без ограничения',empty:'Объявлений по вашим критериям пока нет. Включен фоновый мониторинг',service:'Сервис временно недоступен, пробуем снова…',open:'Открыть объявление',noMarket:'Рынок: нет данных',today:'сегодня',favEmpty:'Избранных автомобилей пока нет'},
 uk:{sub:'Пошук автомобілів нижче ринкової ціни',home:'Знахідки',search:'Пошук',fav:'Обране',settings:'Налаштування',findsTitle:'Свіжі знахідки',found:'Знайдено за 24 години',below:'Нижче ринку',avg:'Середня знижка',max:'Максимальна знижка',brand:'Марка',model:'Модель',region:'Регіон',year:'Мінімальний рік',discount:'Мінімальна знижка від ринку, %',mileage:'Максимальний пробіг, км',price:'Максимальна ціна, USD',transmission:'Тип КПП',fuel:'Тип пального',save:'💾 Зберегти фільтри',manualBrand:'Пошук марки вручну',manualModel:'Пошук моделі вручну',manualSearchBtn:'Знайти',langTitle:'Мова застосунку',settingsInfo:'Налаштування зберігаються автоматично у вашому акаунті',saved:'Збережено ✅',error:'Помилка',anyBrand:'Будь-яка марка',anyModel:'Будь-яка модель',allRegions:'Вся Україна',noLimit:'Без обмежень',empty:'Оголошень за вашими критеріями поки немає. Увімкнено фоновий моніторинг',service:'Сервіс тимчасово недоступний, пробуємо знову…',open:'Відкрити оголошення',noMarket:'Ринок: немає даних',today:'сьогодні',favEmpty:'Обраних автомобілів поки немає'},
@@ -128,8 +128,10 @@ async function loadModels(){
   m.innerHTML='<option value="">'+tr('anyModel')+'</option>';
   m.disabled=!id;
   if(id){
-    const items=await api('/api/catalog/brands/'+id+'/models');
-    items.forEach(x=>m.add(new Option(x.name,x.id)));
+    modelCatalog=await api('/api/catalog/brands/'+id+'/models');
+    modelCatalog.forEach(x=>m.add(new Option(x.name,x.id)));
+  }else{
+    modelCatalog=[];
   }
   if(settings?.model_id) m.value=String(settings.model_id);
   else m.value='';
@@ -168,13 +170,12 @@ function manualSearch(kind){
   }else{
     const id=document.getElementById('brand').value;
     if(!id)return;
-    api('/api/catalog/brands/'+id+'/models').then(items=>{
-      const list=q?items.filter(x=>String(x.name||'').toLowerCase().includes(q)):items;
-      const m=document.getElementById('model');
-      m.innerHTML='<option value="">'+tr('anyModel')+'</option>';
-      list.forEach(x=>m.add(new Option(x.name,x.id)));
-      m.disabled=false;
-    }).catch(()=>document.getElementById('status').textContent=tr('service'));
+    const list=q?modelCatalog.filter(x=>String(x.name||'').toLowerCase().includes(q)):modelCatalog;
+    const m=document.getElementById('model');
+    m.innerHTML='<option value="">'+tr('anyModel')+'</option>';
+    list.forEach(x=>m.add(new Option(x.name,x.id)));
+    m.disabled=false;
+    if(list.length===1){m.value=String(list[0].id);settings=settings||{};settings.model_id=Number(list[0].id);}
   }
 }
 document.getElementById('brandSearch').addEventListener('keydown',e=>{if(e.key==='Enter')manualSearch('brand')});

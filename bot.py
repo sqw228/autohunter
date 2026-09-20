@@ -342,7 +342,7 @@ async def setting_choice_handler(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data.startswith("choose_"))
 async def choose_setting_handler(callback: CallbackQuery):
     _, kind, raw = callback.data.split("_", 2)
-    field_map = {"year": "min_year", "discount": "min_discount", "mileage": "max_mileage_km", "price": "max_price_usd"}
+    field_map = {"year": "min_year", "discount": "min_discount", "mileage": "max_mileage_km", "price": "max_price_usd", "transmission": "transmission", "fuel": "fuel"}
     value = None if raw == "none" else raw
     if kind in {"year", "discount", "mileage", "price"} and value is not None:
         value = float(value)

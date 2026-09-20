@@ -12,10 +12,15 @@ CREATE TABLE IF NOT EXISTS listings (
  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), notified BOOLEAN NOT NULL DEFAULT FALSE,
  UNIQUE(source, source_id)
 );
-CREATE TABLE IF NOT EXISTS subscribers (chat_id BIGINT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+CREATE TABLE IF NOT EXISTS subscribers (
+ chat_id BIGINT PRIMARY KEY,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE
+);
 CREATE TABLE IF NOT EXISTS market_cache (cache_key TEXT PRIMARY KEY, median_usd DOUBLE PRECISION,
  cached_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 '''
+
 
 class Database:
     def __init__(self, url: str):
@@ -26,6 +31,11 @@ class Database:
         self.pool = await asyncpg.create_pool(self.url, min_size=1, max_size=5)
         async with self.pool.acquire() as c:
             await c.execute(CREATE_SQL)
+            # Safe migration for databases created by the previous version.
+            await c.execute(
+                'ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS '
+                'notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE'
+            )
 
     async def close(self):
         if self.pool:
@@ -34,13 +44,37 @@ class Database:
     async def add_subscriber(self, chat_id: int):
         async with self.pool.acquire() as c:
             await c.execute(
-                'INSERT INTO subscribers(chat_id) VALUES($1) ON CONFLICT(chat_id) DO NOTHING',
+                'INSERT INTO subscribers(chat_id) VALUES($1) '
+                'ON CONFLICT(chat_id) DO NOTHING',
                 chat_id,
             )
 
     async def subscribers(self):
         async with self.pool.acquire() as c:
-            return [int(r['chat_id']) for r in await c.fetch('SELECT chat_id FROM subscribers')]
+            return [
+                int(r['chat_id'])
+                for r in await c.fetch(
+                    'SELECT chat_id FROM subscribers '
+                    'WHERE notifications_enabled=TRUE'
+                )
+            ]
+
+    async def notifications_enabled(self, chat_id: int):
+        async with self.pool.acquire() as c:
+            r = await c.fetchrow(
+                'SELECT notifications_enabled FROM subscribers WHERE chat_id=$1',
+                chat_id,
+            )
+            return bool(r['notifications_enabled']) if r else True
+
+    async def toggle_notifications(self, chat_id: int):
+        async with self.pool.acquire() as c:
+            r = await c.fetchrow(
+                'UPDATE subscribers SET notifications_enabled=NOT notifications_enabled '
+                'WHERE chat_id=$1 RETURNING notifications_enabled',
+                chat_id,
+            )
+            return bool(r['notifications_enabled']) if r else True
 
     async def save_listing(self, x: CarListing):
         async with self.pool.acquire() as c:

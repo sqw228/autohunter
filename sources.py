@@ -8,6 +8,7 @@ RIA_SEARCH_URL = "https://developers.ria.com/auto/search"
 RIA_INFO_URL = "https://developers.ria.com/auto/info"
 RIA_AVERAGE_URL = "https://developers.ria.com/auto/average_price"
 
+
 @dataclass(slots=True)
 class CarListing:
     source: str
@@ -27,26 +28,64 @@ class CarListing:
     description: str | None = None
     published_at: datetime | None = None
 
+
 class AutoriaSource:
     def __init__(self):
         self.api_key = settings.autoria_api_key
         self.client = httpx.AsyncClient(timeout=20.0)
         self.retry_after_until = 0.0
         self.page = 0
+        self.request_times = []
+        self.max_requests_per_hour = 25
 
     async def close(self):
         await self.client.aclose()
 
+    async def _wait_for_local_limit(self):
+        loop = asyncio.get_running_loop()
+        now = loop.time()
+
+        self.request_times = [
+            t for t in self.request_times
+            if now - t < 3600
+        ]
+
+        if len(self.request_times) >= self.max_requests_per_hour:
+            oldest = min(self.request_times)
+            wait = 3600 - (now - oldest)
+            raise RuntimeError(
+                f"local AUTO.RIA hourly limit reached; wait {int(wait)} seconds"
+            )
+
     async def _get(self, url, params):
         loop = asyncio.get_running_loop()
+
         wait = self.retry_after_until - loop.time()
         if wait > 0:
-            raise RuntimeError("AUTO.RIA API rate-limit cooldown is active")
+            raise RuntimeError(
+                f"AUTO.RIA rate-limit cooldown active; wait {int(wait)} seconds"
+            )
+
+        await self._wait_for_local_limit()
+
+        await asyncio.sleep(2)
 
         r = await self.client.get(url, params=params)
+        self.request_times.append(loop.time())
+
         if r.status_code == 429:
-            self.retry_after_until = loop.time() + settings.autoria_retry_after_seconds
-            raise RuntimeError("AUTO.RIA API returned HTTP 429")
+            retry_after = r.headers.get("Retry-After")
+
+            try:
+                cooldown = int(retry_after)
+            except (TypeError, ValueError):
+                cooldown = settings.autoria_retry_after_seconds
+
+            self.retry_after_until = loop.time() + cooldown
+
+            raise RuntimeError(
+                f"AUTO.RIA API returned HTTP 429; cooldown {cooldown} seconds"
+            )
 
         r.raise_for_status()
         return r.json()
@@ -57,7 +96,6 @@ class AutoriaSource:
 
         now = datetime.now().astimezone()
         current_page = self.page
-        self.page += 1
 
         params = [
             ("api_key", self.api_key),
@@ -70,13 +108,67 @@ class AutoriaSource:
             ("with_photo", "1"),
         ]
 
+        print(
+            f"AUTO.RIA search: page={current_page}, "
+            f"year={settings.min_year}-{now.year}"
+        )
+
         data = await self._get(RIA_SEARCH_URL, params)
 
         try:
+            if isinstance(data, list):
+                print(f"AUTO.RIA search response: list length={len(data)}")
+
+                if data and isinstance(data[0], dict):
+                    print(
+                        "AUTO.RIA search response keys:",
+                        list(data[0].keys())
+                    )
+
+                    result = data[0].get("result")
+                    if isinstance(result, dict):
+                        print(
+                            "AUTO.RIA result keys:",
+                            list(result.keys())
+                        )
+
+                        search_result = result.get("search_result")
+                        if isinstance(search_result, dict):
+                            print(
+                                "AUTO.RIA search_result keys:",
+                                list(search_result.keys())
+                            )
+
+        except Exception:
+            pass
+
+        try:
             ids = data[0]["result"]["search_result"]["ids"]
-            return [str(x) for x in ids][:settings.max_listings_per_check]
+
+            if isinstance(ids, list):
+                result_ids = [
+                    str(x) for x in ids if x is not None
+                ][:settings.max_listings_per_check]
+
+                print(f"AUTO.RIA parsed listing IDs: {result_ids}")
+                return result_ids
+
         except (KeyError, TypeError, IndexError):
-            return []
+            pass
+
+        if isinstance(data, dict):
+            ids = data.get("ids")
+
+            if isinstance(ids, list):
+                result_ids = [
+                    str(x) for x in ids if x is not None
+                ][:settings.max_listings_per_check]
+
+                print(f"AUTO.RIA parsed IDs from dict: {result_ids}")
+                return result_ids
+
+        print("AUTO.RIA: could not find listing IDs in search response")
+        return []
 
     async def get_listing(self, source_id):
         if not self.api_key:
@@ -84,7 +176,10 @@ class AutoriaSource:
 
         data = await self._get(
             RIA_INFO_URL,
-            [("api_key", self.api_key), ("auto_id", source_id)],
+            [
+                ("api_key", self.api_key),
+                ("auto_id", source_id),
+            ],
         )
 
         if not isinstance(data, list) or not data or not isinstance(data[0], dict):
@@ -95,7 +190,10 @@ class AutoriaSource:
         s = x.get("stateData") or {}
 
         try:
-            mileage = int(float(a.get("raceInt")) * 1000) if a.get("raceInt") is not None else None
+            mileage = (
+                int(float(a.get("raceInt")) * 1000)
+                if a.get("raceInt") is not None else None
+            )
         except (TypeError, ValueError):
             mileage = None
 
@@ -116,50 +214,69 @@ class AutoriaSource:
         dealer = x.get("dealer") or {}
 
         return CarListing(
-            "AUTO.RIA", source_id, link, x.get("markName"), x.get("modelName"),
-            _as_int(x.get("markId")), _as_int(x.get("modelId")), year=year,
-            mileage_km=mileage, price_usd=price,
+            source="AUTO.RIA",
+            source_id=source_id,
+            url=link,
+            brand=x.get("markName"),
+            model=x.get("modelName"),
+            brand_id=_as_int(x.get("markId")),
+            model_id=_as_int(x.get("modelId")),
+            year=year,
+            mileage_km=mileage,
+            price_usd=price,
             city=s.get("name") or x.get("locationCityName"),
-            seller_type=dealer.get("type"), title=x.get("title"),
+            seller_type=dealer.get("type"),
+            title=x.get("title"),
             description=a.get("description"),
-            published_at=_parse_date(a.get("addDate") or x.get("addDate")),
+            published_at=_parse_date(
+                a.get("addDate") or x.get("addDate")
+            ),
         )
 
     async def get_market_median(self, listing):
         if not self.api_key or not listing.brand_id or not listing.model_id:
             return None
 
-        p = [
+        params = [
             ("api_key", self.api_key),
             ("marka_id", str(listing.brand_id)),
             ("model_id", str(listing.model_id)),
         ]
 
         if listing.year:
-            p += [
+            params += [
                 ("yers", str(max(settings.min_year, listing.year - 1))),
                 ("yers", str(listing.year + 1)),
             ]
 
         if listing.mileage_km is not None:
-            r = max(0, int(listing.mileage_km / 1000))
-            p += [("raceInt", str(max(0, r - 50))), ("raceInt", str(r + 50))]
+            race = max(0, int(listing.mileage_km / 1000))
+            params += [
+                ("raceInt", str(max(0, race - 50))),
+                ("raceInt", str(race + 50)),
+            ]
 
         try:
-            data = await self._get(RIA_AVERAGE_URL, p)
+            data = await self._get(RIA_AVERAGE_URL, params)
         except (RuntimeError, httpx.HTTPStatusError):
             return None
 
         if not isinstance(data, dict):
             return None
 
-        q = data.get("percentiles") or {}
-        value = q.get("50.0", q.get(50.0))
+        percentiles = data.get("percentiles") or {}
+        value = percentiles.get("50.0", percentiles.get(50.0))
 
         try:
             return float(value) if value is not None else None
         except (TypeError, ValueError):
             return None
+
+
+class OlxSource:
+    async def search(self):
+        return []
+
 
 def _as_int(value):
     try:
@@ -167,18 +284,18 @@ def _as_int(value):
     except (TypeError, ValueError):
         return None
 
-class OlxSource:
-    async def search(self):
-        return []
 
 def _parse_date(value):
     if not value:
         return None
+
     if isinstance(value, datetime):
         return value
+
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
             return datetime.strptime(value, fmt)
         except (TypeError, ValueError):
             pass
+
     return None

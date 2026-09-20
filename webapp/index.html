@@ -1,194 +1,79 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>AutoHunter</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root {
-      --bg: var(--tg-theme-bg-color, #f4f5f7);
-      --card: var(--tg-theme-secondary-bg-color, #ffffff);
-      --text: var(--tg-theme-text-color, #111111);
-      --hint: var(--tg-theme-hint-color, #777777);
-      --accent: var(--tg-theme-button-color, #2481cc);
-    }
-    * { box-sizing: border-box; }
-    body { margin:0; padding:18px 14px 28px; background:var(--bg); color:var(--text); font-family:Arial,sans-serif; }
-    h1 { margin:4px 0 4px; font-size:27px; }
-    .sub { color:var(--hint); margin-bottom:18px; }
-    .card { background:var(--card); border-radius:18px; padding:16px; margin-bottom:12px; }
-    .row { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:12px 0; }
-    label { font-size:14px; color:var(--hint); display:block; margin-bottom:6px; }
-    select,input { width:100%; border:1px solid rgba(128,128,128,.25); border-radius:12px; padding:12px; background:var(--bg); color:var(--text); font-size:16px; }
-    .field { margin-bottom:13px; }
-    button { width:100%; border:0; border-radius:13px; padding:13px; background:var(--accent); color:white; font-size:16px; font-weight:700; }
-    .status { text-align:center; color:var(--hint); min-height:22px; margin:8px 0; }
-    .pill { padding:6px 10px; border-radius:20px; background:rgba(36,129,204,.12); color:var(--accent); font-size:13px; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AutoHunter</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:var(--tg-theme-bg-color,#f4f5f7);--card:var(--tg-theme-secondary-bg-color,#fff);--text:var(--tg-theme-text-color,#111);--hint:var(--tg-theme-hint-color,#777);--accent:var(--tg-theme-button-color,#2481cc);--danger:#e05a5a}
+*{box-sizing:border-box}body{margin:0;padding:16px 12px 82px;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}h1{margin:2px 0 3px;font-size:27px}.sub{color:var(--hint);margin-bottom:15px}.card{background:var(--card);border-radius:18px;padding:15px;margin-bottom:11px}.stats{display:grid;grid-template-columns:1fr 1fr;gap:9px}.stat{background:var(--bg);border-radius:14px;padding:12px}.stat b{font-size:21px;display:block}.stat span{font-size:12px;color:var(--hint)}.listing{position:relative}.listing h3{margin:0 32px 5px 0;font-size:17px}.meta{color:var(--hint);font-size:13px;line-height:1.5}.price{font-size:21px;font-weight:700;margin:8px 0}.discount{display:inline-block;padding:5px 8px;border-radius:9px;background:rgba(30,170,90,.13);color:#18864a;font-weight:700;font-size:13px}.actions{display:flex;gap:8px;margin-top:11px}.actions button{flex:1}.star{position:absolute;right:4px;top:0;background:none!important;color:var(--text)!important;width:auto!important;padding:4px!important;font-size:24px}.btn{border:0;border-radius:12px;padding:11px;background:var(--accent);color:white;font-size:15px;font-weight:700}.ghost{background:var(--bg);color:var(--text)}label{font-size:13px;color:var(--hint);display:block;margin-bottom:5px}select,input{width:100%;border:1px solid rgba(128,128,128,.25);border-radius:11px;padding:11px;background:var(--bg);color:var(--text);font-size:15px}.field{margin-bottom:11px}.nav{position:fixed;left:8px;right:8px;bottom:8px;background:var(--card);border-radius:17px;display:grid;grid-template-columns:repeat(4,1fr);padding:7px;box-shadow:0 2px 18px rgba(0,0,0,.12);z-index:5}.nav button{background:none;color:var(--hint);border:0;padding:7px 2px;font-size:11px}.nav button.active{color:var(--accent);font-weight:700}.hidden{display:none}.status{text-align:center;color:var(--hint);padding:10px}.lang{display:flex;gap:7px}.lang button{flex:1}.empty{text-align:center;color:var(--hint);padding:25px 8px}
+</style>
 </head>
 <body>
-  <h1>🚗 AutoHunter</h1>
-  <div class="sub">Поиск автомобилей ниже рыночной цены</div>
+<header><h1>🚗 AutoHunter</h1><div class="sub" id="subtitle"></div></header>
 
-  <div class="card">
-    <div class="row"><strong>Мои фильтры</strong><span class="pill">AUTO.RIA</span></div>
+<section id="home">
+<div class="card"><div class="stats">
+<div class="stat"><b id="found">—</b><span id="foundL"></span></div>
+<div class="stat"><b id="below">—</b><span id="belowL"></span></div>
+<div class="stat"><b id="avg">—</b><span id="avgL"></span></div>
+<div class="stat"><b id="max">—</b><span id="maxL"></span></div>
+</div></div>
+<div id="listings"></div>
+</section>
 
-    <div class="field">
-      <label>Марка</label>
-      <select id="brand"><option value="">Любая марка</option></select>
-    </div>
+<section id="search" class="hidden">
+<div class="card">
+<div class="field"><label id="brandL"></label><select id="brand"><option value=""></option></select></div>
+<div class="field"><label id="modelL"></label><select id="model" disabled><option value=""></option></select></div>
+<div class="field"><label id="regionL"></label><select id="region"><option value=""></option></select></div>
+<div class="field"><label id="yearL"></label><select id="year"><option>2012</option><option>2015</option><option>2018</option><option>2020</option><option>2022</option></select></div>
+<div class="field"><label id="discountL"></label><select id="discount"><option>10</option><option>15</option><option>20</option><option>25</option><option>30</option></select></div>
+<div class="field"><label id="mileageL"></label><select id="mileage"><option value=""></option><option>100000</option><option>150000</option><option>200000</option><option>250000</option></select></div>
+<div class="field"><label id="priceL"></label><select id="price"><option value=""></option><option>10000</option><option>20000</option><option>30000</option><option>50000</option></select></div>
+<div class="status" id="status"></div><button class="btn" onclick="save()" id="saveBtn"></button>
+</div></section>
 
-    <div class="field">
-      <label>Модель</label>
-      <select id="model" disabled><option value="">Любая модель</option></select>
-    </div>
+<section id="favorites" class="hidden"><div id="favList"></div></section>
+<section id="settings" class="hidden">
+<div class="card"><b id="langTitle"></b><div class="lang" style="margin-top:10px">
+<button class="btn ghost" onclick="setLang('uk')">🇺🇦 Українська</button><button class="btn ghost" onclick="setLang('ru')">🇷🇺 Русский</button><button class="btn ghost" onclick="setLang('en')">🇬🇧 English</button>
+</div></div>
+<div class="card"><b id="settingsInfo"></b><div class="status" id="settingsStatus"></div></div>
+</section>
 
-    <div class="field">
-      <label>Регион</label>
-      <select id="region"><option value="">Вся Украина</option></select>
-    </div>
-
-    <div class="field">
-      <label>Минимальный год</label>
-      <select id="year">
-        <option>2012</option><option>2015</option><option>2018</option>
-        <option>2020</option><option>2022</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label>Минимальная скидка от рынка, %</label>
-      <select id="discount">
-        <option>10</option><option>15</option><option>20</option>
-        <option>25</option><option>30</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label>Максимальный пробег, км</label>
-      <select id="mileage">
-        <option value="">Без ограничения</option>
-        <option>100000</option><option>150000</option><option>200000</option><option>250000</option>
-      </select>
-    </div>
-
-    <div class="field">
-      <label>Максимальная цена, USD</label>
-      <select id="price">
-        <option value="">Без ограничения</option>
-        <option>10000</option><option>20000</option><option>30000</option><option>50000</option>
-      </select>
-    </div>
-
-    <div class="status" id="status">Загрузка…</div>
-    <button onclick="save()">💾 Сохранить фильтры</button>
-  </div>
+<nav class="nav">
+<button class="active" onclick="showTab('home',this)">🏠<br><span id="navHome"></span></button>
+<button onclick="showTab('search',this)">🔎<br><span id="navSearch"></span></button>
+<button onclick="showTab('favorites',this)">❤️<br><span id="navFav"></span></button>
+<button onclick="showTab('settings',this)">⚙️<br><span id="navSettings"></span></button>
+</nav>
 
 <script>
-const tg = window.Telegram.WebApp;
-tg.ready();
-tg.expand();
-
-const headers = {"X-Telegram-Init-Data": tg.initData};
-let settings = null;
-let brands = [];
-let regions = [];
-
-async function api(url, options={}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: {...headers, ...(options.headers || {}), "Content-Type":"application/json"}
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-
-function setStatus(text) { document.getElementById("status").textContent = text; }
-
-async function loadCatalogs() {
-  [brands, regions] = await Promise.all([
-    api("/api/catalog/brands"),
-    api("/api/catalog/regions")
-  ]);
-
-  const brand = document.getElementById("brand");
-  brands.forEach(x => brand.add(new Option(x.name, x.id)));
-
-  const region = document.getElementById("region");
-  regions.forEach(x => region.add(new Option(x.name, x.id)));
-
-  brand.addEventListener("change", loadModels);
-}
-
-async function loadModels() {
-  const brandId = document.getElementById("brand").value;
-  const model = document.getElementById("model");
-  model.innerHTML = '<option value="">Любая модель</option>';
-  model.disabled = !brandId;
-  if (!brandId) return;
-  const items = await api("/api/catalog/brands/" + brandId + "/models");
-  items.forEach(x => model.add(new Option(x.name, x.id)));
-}
-
-function applySettings(s) {
-  settings = s;
-  document.getElementById("brand").value = s.brand_id || "";
-  document.getElementById("region").value = s.region_id || "";
-  document.getElementById("year").value = s.min_year;
-  document.getElementById("discount").value = s.min_discount;
-  document.getElementById("mileage").value = s.max_mileage_km || "";
-  document.getElementById("price").value = s.max_price_usd || "";
-  if (s.brand_id) {
-    loadModels().then(() => {
-      document.getElementById("model").value = s.model_id || "";
-    });
-  }
-}
-
-async function save() {
-  try {
-    setStatus("Сохраняю…");
-    const brandId = Number(document.getElementById("brand").value) || null;
-    const modelId = Number(document.getElementById("model").value) || null;
-    const regionId = Number(document.getElementById("region").value) || null;
-    const brandObj = brands.find(x => x.id === brandId);
-    const modelObj = [...document.getElementById("model").options].find(x => Number(x.value) === modelId);
-    const regionObj = regions.find(x => x.id === regionId);
-
-    const payload = {
-      min_year: Number(document.getElementById("year").value),
-      min_discount: Number(document.getElementById("discount").value),
-      max_mileage_km: document.getElementById("mileage").value ? Number(document.getElementById("mileage").value) : null,
-      max_price_usd: document.getElementById("price").value ? Number(document.getElementById("price").value) : null,
-      brand_id: brandId,
-      brand_name: brandObj ? brandObj.name : null,
-      model_id: modelId,
-      model_name: modelObj ? modelObj.text : null,
-      region_id: regionId,
-      region_name: regionObj ? regionObj.name : null
-    };
-
-    const updated = await api("/api/settings", {method:"POST", body:JSON.stringify(payload)});
-    applySettings(updated);
-    setStatus("Сохранено ✅");
-    tg.HapticFeedback.notificationOccurred("success");
-  } catch (e) {
-    setStatus("Ошибка: " + e.message);
-  }
-}
-
-(async function() {
-  try {
-    if (!tg.initData) throw new Error("Открой приложение из Telegram");
-    await loadCatalogs();
-    const s = await api("/api/me");
-    applySettings(s);
-    setStatus("Готово");
-  } catch (e) {
-    setStatus("Не удалось загрузить данные");
-  }
-})();
+const tg=window.Telegram.WebApp;tg.ready();tg.expand();
+const headers={"X-Telegram-Init-Data":tg.initData};
+let lang='ru',brands=[],regions=[],settings=null;
+const T={
+ru:{sub:'Поиск автомобилей ниже рыночной цены',home:'Находки',search:'Поиск',fav:'Избранное',settings:'Настройки',found:'Найдено за 24 часа',below:'Ниже рынка',avg:'Средняя скидка',max:'Максимальная скидка',brand:'Марка',model:'Модель',region:'Регион',year:'Минимальный год',discount:'Минимальная скидка от рынка, %',mileage:'Максимальный пробег, км',price:'Максимальная цена, USD',save:'💾 Сохранить фильтры',langTitle:'Язык приложения',settingsInfo:'Настройки сохраняются автоматически в вашем аккаунте',saved:'Сохранено ✅',error:'Ошибка',anyBrand:'Любая марка',anyModel:'Любая модель',allRegions:'Вся Украина',noLimit:'Без ограничения',empty:'Пока нет найденных автомобилей',open:'Открыть объявление',noMarket:'Рынок: нет данных',today:'сегодня',favEmpty:'Избранных автомобилей пока нет'},
+uk:{sub:'Пошук автомобілів нижче ринкової ціни',home:'Знахідки',search:'Пошук',fav:'Обране',settings:'Налаштування',found:'Знайдено за 24 години',below:'Нижче ринку',avg:'Середня знижка',max:'Максимальна знижка',brand:'Марка',model:'Модель',region:'Регіон',year:'Мінімальний рік',discount:'Мінімальна знижка від ринку, %',mileage:'Максимальний пробіг, км',price:'Максимальна ціна, USD',save:'💾 Зберегти фільтри',langTitle:'Мова застосунку',settingsInfo:'Налаштування зберігаються автоматично у вашому акаунті',saved:'Збережено ✅',error:'Помилка',anyBrand:'Будь-яка марка',anyModel:'Будь-яка модель',allRegions:'Вся Україна',noLimit:'Без обмежень',empty:'Поки немає знайдених автомобілів',open:'Відкрити оголошення',noMarket:'Ринок: немає даних',today:'сьогодні',favEmpty:'Обраних автомобілів поки немає'},
+en:{sub:'Find cars below market price',home:'Finds',search:'Search',fav:'Favorites',settings:'Settings',found:'Found in 24h',below:'Below market',avg:'Average discount',max:'Max discount',brand:'Make',model:'Model',region:'Region',year:'Minimum year',discount:'Minimum market discount, %',mileage:'Maximum mileage, km',price:'Maximum price, USD',save:'💾 Save filters',langTitle:'App language',settingsInfo:'Settings are saved automatically to your account',saved:'Saved ✅',error:'Error',anyBrand:'Any make',anyModel:'Any model',allRegions:'All Ukraine',noLimit:'No limit',empty:'No cars found yet',open:'Open listing',noMarket:'Market: no data',today:'today',favEmpty:'No favorite cars yet'}
+};
+function tr(k){return T[lang][k]||k}
+async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers,...(opt.headers||{}),'Content-Type':'application/json'}});if(!r.ok)throw Error(await r.text());return r.json()}
+function applyText(){document.getElementById('subtitle').textContent=tr('sub');['navHome','navSearch','navFav','navSettings'].forEach((id,i)=>document.getElementById(id).textContent=[tr('home'),tr('search'),tr('fav'),tr('settings')][i]);document.getElementById('foundL').textContent=tr('found');document.getElementById('belowL').textContent=tr('below');document.getElementById('avgL').textContent=tr('avg');document.getElementById('maxL').textContent=tr('max');document.getElementById('brandL').textContent=tr('brand');document.getElementById('modelL').textContent=tr('model');document.getElementById('regionL').textContent=tr('region');document.getElementById('yearL').textContent=tr('year');document.getElementById('discountL').textContent=tr('discount');document.getElementById('mileageL').textContent=tr('mileage');document.getElementById('priceL').textContent=tr('price');document.getElementById('saveBtn').textContent=tr('save');document.getElementById('langTitle').textContent=tr('langTitle');document.getElementById('settingsInfo').textContent=tr('settingsInfo');document.querySelector('#brand option').textContent=tr('anyBrand');document.querySelector('#model option').textContent=tr('anyModel');document.querySelector('#region option').textContent=tr('allRegions');document.querySelector('#mileage option').textContent=tr('noLimit');document.querySelector('#price option').textContent=tr('noLimit')}
+function showTab(id,btn){['home','search','favorites','settings'].forEach(x=>document.getElementById(x).classList.toggle('hidden',x!==id));document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');if(id==='home')loadHome();if(id==='favorites')loadFavorites()}
+function money(v){return v==null?'—':'$'+Math.round(v).toLocaleString('en-US')}
+function renderListings(items,target){const el=document.getElementById(target);if(!items.length){el.innerHTML='<div class="card empty">'+tr(target==='favList'?'favEmpty':'empty')+'</div>';return}el.innerHTML=items.map(x=>{const title=[x.brand,x.model].filter(Boolean).join(' ')||x.title||'Auto';const d=x.discount_percent!=null?'<span class="discount">−'+Math.abs(Number(x.discount_percent)).toFixed(1)+'%</span>':'<span class="meta">'+tr('noMarket')+'</span>';return '<div class="card listing"><button class="star" onclick="fav(\''+x.source+'\',\''+x.source_id+'\','+(!x.is_favorite)+')">'+(x.is_favorite?'❤️':'♡')+'</button><h3>'+esc(title)+'</h3><div class="meta">'+(x.year||'—')+' · '+(x.mileage_km?Number(x.mileage_km).toLocaleString()+' km':'—')+' · '+(x.city||'—')+'</div><div class="price">'+money(x.price_usd)+'</div>'+d+'<div class="actions"><button class="btn" onclick="window.open(\''+x.url+'\',\'_blank\')">'+tr('open')+'</button></div></div>'}).join('')}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+async function loadHome(){try{const [items,s]=await Promise.all([api('/api/listings'),api('/api/stats')]);renderListings(items,'listings');document.getElementById('found').textContent=s.found_today||0;document.getElementById('below').textContent=s.below_market_today||0;document.getElementById('avg').textContent=s.avg_discount==null?'—':Number(s.avg_discount).toFixed(1)+'%';document.getElementById('max').textContent=s.max_discount==null?'—':Number(s.max_discount).toFixed(1)+'%'}catch(e){document.getElementById('listings').innerHTML='<div class="card empty">'+tr('error')+'</div>'}}
+async function loadFavorites(){try{renderListings(await api('/api/favorites'),'favList')}catch(e){document.getElementById('favList').innerHTML='<div class="card empty">'+tr('error')+'</div>'}}
+async function fav(source,id,value){await api('/api/favorites',{method:'POST',body:JSON.stringify({source,source_id:id,value})});loadHome();loadFavorites()}
+async function loadCatalogs(){[brands,regions]=await Promise.all([api('/api/catalog/brands'),api('/api/catalog/regions')]);const b=document.getElementById('brand');brands.forEach(x=>b.add(new Option(x.name,x.id)));const r=document.getElementById('region');regions.forEach(x=>r.add(new Option(x.name,x.id)));b.addEventListener('change',loadModels)}
+async function loadModels(){const id=document.getElementById('brand').value,m=document.getElementById('model');m.innerHTML='<option value="">'+tr('anyModel')+'</option>';m.disabled=!id;if(id)(await api('/api/catalog/brands/'+id+'/models')).forEach(x=>m.add(new Option(x.name,x.id)))}
+function applySettings(s){settings=s;document.getElementById('brand').value=s.brand_id||'';document.getElementById('region').value=s.region_id||'';document.getElementById('year').value=s.min_year;document.getElementById('discount').value=s.min_discount;document.getElementById('mileage').value=s.max_mileage_km||'';document.getElementById('price').value=s.max_price_usd||'';if(s.brand_id)loadModels().then(()=>document.getElementById('model').value=s.model_id||'')}
+async function save(){try{document.getElementById('status').textContent='…';const bid=Number(document.getElementById('brand').value)||null,mid=Number(document.getElementById('model').value)||null,rid=Number(document.getElementById('region').value)||null;const bo=brands.find(x=>x.id===bid),mo=[...document.getElementById('model').options].find(x=>Number(x.value)===mid),ro=regions.find(x=>x.id===rid);applySettings(await api('/api/settings',{method:'POST',body:JSON.stringify({min_year:Number(document.getElementById('year').value),min_discount:Number(document.getElementById('discount').value),max_mileage_km:document.getElementById('mileage').value?Number(document.getElementById('mileage').value):null,max_price_usd:document.getElementById('price').value?Number(document.getElementById('price').value):null,brand_id:bid,brand_name:bo?.name||null,model_id:mid,model_name:mo?.text||null,region_id:rid,region_name:ro?.name||null})}));document.getElementById('status').textContent=tr('saved')}catch(e){document.getElementById('status').textContent=tr('error')}}
+async function setLang(l){lang=l;await api('/api/language',{method:'POST',body:JSON.stringify({language:l})});applyText();document.getElementById('settingsStatus').textContent=tr('saved');loadHome()}
+(async()=>{try{if(!tg.initData)throw Error();lang=(await api('/api/language')).language||'ru';applyText();await loadCatalogs();applySettings(await api('/api/me'));await loadHome()}catch(e){document.body.innerHTML='<div class="card empty">'+tr('error')+'</div>'}})();
 </script>
-</body>
-</html>
+</body></html>

@@ -25,6 +25,7 @@ class CarListing:
     mileage_km: int | None = None
     price_usd: float | None = None
     city: str | None = None
+    region_id: int | None = None
     seller_type: str | None = None
     title: str | None = None
     description: str | None = None
@@ -299,6 +300,7 @@ class AutoriaSource:
             model_id=_as_int(first_value(x.get("modelId"), x.get("model_id"))),
             year=year, mileage_km=mileage, price_usd=price,
             city=first_value(s.get("name"), x.get("locationCityName")),
+            region_id=_as_int(first_value(s.get("id"), s.get("stateId"), x.get("stateId"))),
             seller_type=dealer.get("type"), title=x.get("title"),
             description=first_value(x.get("description"), a.get("description")),
             published_at=_parse_date(x.get("addDate") or a.get("addDate")),

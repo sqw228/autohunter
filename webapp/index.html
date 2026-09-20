@@ -115,7 +115,7 @@ async function loadCatalogs(){
   const r=document.getElementById('region');
   r.innerHTML='<option value="">'+tr('allRegions')+'</option>';
   regions.forEach(x=>r.add(new Option(x.name,x.id)));
-  b.onchange=loadModels;
+  b.onchange=()=>{settings=settings||{};settings.brand_id=Number(b.value)||null;settings.model_id=null;loadModels();};
   if(settings?.brand_id){
     b.value=String(settings.brand_id);
     await loadModels();
@@ -124,6 +124,7 @@ async function loadCatalogs(){
 }
 async function loadModels(){
   const id=document.getElementById('brand').value,m=document.getElementById('model');
+  if(id){settings=settings||{};settings.brand_id=Number(id);}
   m.innerHTML='<option value="">'+tr('anyModel')+'</option>';
   m.disabled=!id;
   if(id){
@@ -131,6 +132,7 @@ async function loadModels(){
     items.forEach(x=>m.add(new Option(x.name,x.id)));
   }
   if(settings?.model_id) m.value=String(settings.model_id);
+  else m.value='';
 }
 function applySettingsValues(s){
   document.getElementById('brand').value=s.brand_id?String(s.brand_id):'';
@@ -152,9 +154,17 @@ function manualSearch(kind){
     const b=document.getElementById('brand');
     b.innerHTML='<option value="">'+tr('anyBrand')+'</option>';
     list.forEach(x=>b.add(new Option(x.name,x.id)));
-    b.value='';
-    document.getElementById('model').innerHTML='<option value="">'+tr('anyModel')+'</option>';
-    document.getElementById('model').disabled=true;
+    if(list.length===1){
+      b.value=String(list[0].id);
+      settings=settings||{};
+      settings.brand_id=Number(list[0].id);
+      settings.model_id=null;
+      loadModels();
+    }else{
+      b.value='';
+      document.getElementById('model').innerHTML='<option value="">'+tr('anyModel')+'</option>';
+      document.getElementById('model').disabled=true;
+    }
   }else{
     const id=document.getElementById('brand').value;
     if(!id)return;

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+import asyncio
 import httpx
 from config import settings
 
@@ -30,12 +31,23 @@ class AutoriaSource:
     def __init__(self):
         self.api_key = settings.autoria_api_key
         self.client = httpx.AsyncClient(timeout=20.0)
+        self.retry_after_until = 0.0
 
     async def close(self):
         await self.client.aclose()
 
     async def _get(self, url, params):
+        wait = self.retry_after_until - asyncio.get_running_loop().time()
+        if wait > 0:
+            raise httpx.HTTPStatusError(
+                "AUTO.RIA API rate limit cooldown",
+                request=httpx.Request("GET", url),
+                response=httpx.Response(429, request=httpx.Request("GET", url)),
+            )
+
         r = await self.client.get(url, params=params)
+        if r.status_code == 429:
+            self.retry_after_until = asyncio.get_running_loop().time() + settings.autoria_retry_after_seconds
         r.raise_for_status()
         return r.json()
 
@@ -101,19 +113,11 @@ class AutoriaSource:
         dealer = x.get("dealer") or {}
 
         return CarListing(
-            "AUTO.RIA",
-            source_id,
-            link,
-            x.get("markName"),
-            x.get("modelName"),
-            _as_int(x.get("markId")),
-            _as_int(x.get("modelId")),
-            year=year,
-            mileage_km=mileage,
-            price_usd=price,
+            "AUTO.RIA", source_id, link, x.get("markName"), x.get("modelName"),
+            _as_int(x.get("markId")), _as_int(x.get("modelId")), year=year,
+            mileage_km=mileage, price_usd=price,
             city=s.get("name") or x.get("locationCityName"),
-            seller_type=dealer.get("type"),
-            title=x.get("title"),
+            seller_type=dealer.get("type"), title=x.get("title"),
             description=a.get("description"),
             published_at=_parse_date(a.get("addDate") or x.get("addDate")),
         )
@@ -167,14 +171,11 @@ class OlxSource:
 def _parse_date(value):
     if not value:
         return None
-
     if isinstance(value, datetime):
         return value
-
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
             return datetime.strptime(value, fmt)
         except (TypeError, ValueError):
             pass
-
     return None

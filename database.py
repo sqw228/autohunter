@@ -22,7 +22,13 @@ CREATE TABLE IF NOT EXISTS subscriber_settings (
  min_year INTEGER NOT NULL DEFAULT 2012,
  min_discount DOUBLE PRECISION NOT NULL DEFAULT 15,
  max_mileage_km INTEGER,
- max_price_usd DOUBLE PRECISION
+ max_price_usd DOUBLE PRECISION,
+ brand_id INTEGER,
+ brand_name TEXT,
+ model_id INTEGER,
+ model_name TEXT,
+ region_id INTEGER,
+ region_name TEXT
 );
 CREATE TABLE IF NOT EXISTS sent_notifications (
  chat_id BIGINT NOT NULL REFERENCES subscribers(chat_id) ON DELETE CASCADE,
@@ -49,6 +55,15 @@ class Database:
                 'ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS '
                 'notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE'
             )
+            for sql in (
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS brand_id INTEGER',
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS brand_name TEXT',
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS model_id INTEGER',
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS model_name TEXT',
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS region_id INTEGER',
+                'ALTER TABLE subscriber_settings ADD COLUMN IF NOT EXISTS region_name TEXT',
+            ):
+                await c.execute(sql)
             await c.execute('''
                 INSERT INTO subscriber_settings(chat_id)
                 SELECT chat_id FROM subscribers
@@ -78,7 +93,9 @@ class Database:
         async with self.pool.acquire() as c:
             rows = await c.fetch('''
                 SELECT s.chat_id, ss.min_year, ss.min_discount,
-                       ss.max_mileage_km, ss.max_price_usd
+                       ss.max_mileage_km, ss.max_price_usd,
+                       ss.brand_id, ss.brand_name, ss.model_id, ss.model_name,
+                       ss.region_id, ss.region_name
                 FROM subscribers s
                 JOIN subscriber_settings ss ON ss.chat_id=s.chat_id
                 WHERE s.notifications_enabled=TRUE
@@ -103,21 +120,51 @@ class Database:
     async def get_settings(self, chat_id: int):
         async with self.pool.acquire() as c:
             r = await c.fetchrow(
-                'SELECT min_year, min_discount, max_mileage_km, max_price_usd '
-                'FROM subscriber_settings WHERE chat_id=$1', chat_id
+                '''SELECT min_year, min_discount, max_mileage_km, max_price_usd,
+                          brand_id, brand_name, model_id, model_name, region_id, region_name
+                   FROM subscriber_settings WHERE chat_id=$1''', chat_id
             )
             return dict(r) if r else {
                 'min_year': 2012, 'min_discount': 15.0,
                 'max_mileage_km': None, 'max_price_usd': None,
+                'brand_id': None, 'brand_name': None,
+                'model_id': None, 'model_name': None,
+                'region_id': None, 'region_name': None,
             }
 
     async def update_setting(self, chat_id: int, field: str, value):
-        allowed = {'min_year', 'min_discount', 'max_mileage_km', 'max_price_usd'}
+        allowed = {
+            'min_year', 'min_discount', 'max_mileage_km', 'max_price_usd',
+            'brand_id', 'brand_name', 'model_id', 'model_name',
+            'region_id', 'region_name',
+        }
         if field not in allowed:
             raise ValueError('Unknown setting')
         async with self.pool.acquire() as c:
             await c.execute(
                 f'UPDATE subscriber_settings SET {field}=$1 WHERE chat_id=$2', value, chat_id
+            )
+
+    async def set_brand(self, chat_id: int, brand_id, brand_name):
+        async with self.pool.acquire() as c:
+            await c.execute(
+                '''UPDATE subscriber_settings
+                   SET brand_id=$1, brand_name=$2, model_id=NULL, model_name=NULL
+                   WHERE chat_id=$3''', brand_id, brand_name, chat_id
+            )
+
+    async def set_model(self, chat_id: int, model_id, model_name):
+        async with self.pool.acquire() as c:
+            await c.execute(
+                'UPDATE subscriber_settings SET model_id=$1, model_name=$2 WHERE chat_id=$3',
+                model_id, model_name, chat_id
+            )
+
+    async def set_region(self, chat_id: int, region_id, region_name):
+        async with self.pool.acquire() as c:
+            await c.execute(
+                'UPDATE subscriber_settings SET region_id=$1, region_name=$2 WHERE chat_id=$3',
+                region_id, region_name, chat_id
             )
 
     async def was_notified(self, chat_id: int, source: str, source_id: str):

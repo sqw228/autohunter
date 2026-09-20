@@ -129,6 +129,19 @@ class AutoriaSource:
         self._states_cache = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
         return self._states_cache
 
+    async def find_catalog(self, kind, query, parent_id=0):
+        query = (query or "").strip().lower()
+        if kind == "brand":
+            items = await self.get_marks()
+        elif kind == "model":
+            items = await self.get_models(parent_id)
+        elif kind == "region":
+            items = await self.get_states()
+        else:
+            return []
+        return [item for item in items if query in item[0].lower()]
+
+
     async def search_ids(self, user_settings=None):
         if not self.api_key:
             return []

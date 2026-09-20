@@ -7,7 +7,7 @@ CREATE_SQL = '''
 CREATE TABLE IF NOT EXISTS listings (
  id BIGSERIAL PRIMARY KEY, source TEXT NOT NULL, source_id TEXT NOT NULL, url TEXT NOT NULL,
  brand TEXT, model TEXT, brand_id INTEGER, model_id INTEGER, generation TEXT, year INTEGER,
- mileage_km INTEGER, price_usd DOUBLE PRECISION, city TEXT, seller_type TEXT, title TEXT,
+ mileage_km INTEGER, price_usd DOUBLE PRECISION, city TEXT, region_id INTEGER, seller_type TEXT, title TEXT,
  description TEXT, published_at TIMESTAMPTZ, first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), notified BOOLEAN NOT NULL DEFAULT FALSE,
  UNIQUE(source, source_id)
@@ -62,6 +62,9 @@ class Database:
         self.pool = await asyncpg.create_pool(self.url, min_size=1, max_size=5)
         async with self.pool.acquire() as c:
             await c.execute(CREATE_SQL)
+            await c.execute(
+                'ALTER TABLE listings ADD COLUMN IF NOT EXISTS region_id INTEGER'
+            )
             await c.execute(
                 'ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS '
                 'notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE'
@@ -203,14 +206,14 @@ class Database:
             r = await c.fetchrow(
                 '''INSERT INTO listings(
                     source,source_id,url,brand,model,brand_id,model_id,generation,year,
-                    mileage_km,price_usd,city,seller_type,title,description,published_at
-                ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+                    mileage_km,price_usd,city,region_id,seller_type,title,description,published_at
+                ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
                 ON CONFLICT(source,source_id) DO UPDATE SET
                     last_seen_at=NOW(), url=EXCLUDED.url, price_usd=EXCLUDED.price_usd,
                     mileage_km=EXCLUDED.mileage_km, description=EXCLUDED.description
                 RETURNING xmax=0 AS inserted, notified''',
                 x.source, x.source_id, x.url, x.brand, x.model, x.brand_id, x.model_id,
-                x.generation, x.year, x.mileage_km, x.price_usd, x.city, x.seller_type,
+                x.generation, x.year, x.mileage_km, x.price_usd, x.city, x.region_id, x.seller_type,
                 x.title, x.description, x.published_at,
             )
             return bool(r['inserted']), bool(r['notified'])
@@ -257,7 +260,7 @@ class Database:
                 WHERE l.price_usd IS NOT NULL
                   AND (ss.brand_id IS NULL OR l.brand_id=ss.brand_id)
                   AND (ss.model_id IS NULL OR l.model_id=ss.model_id)
-                  AND (ss.region_id IS NULL OR l.city IS NOT NULL)
+                  AND (ss.region_id IS NULL OR l.region_id=ss.region_id)
                   AND (ss.min_year IS NULL OR l.year >= ss.min_year)
                   AND (ss.max_mileage_km IS NULL OR (l.mileage_km IS NOT NULL AND l.mileage_km <= ss.max_mileage_km))
                   AND (ss.max_price_usd IS NULL OR l.price_usd <= ss.max_price_usd)
@@ -321,6 +324,7 @@ class Database:
                                      COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
                 WHERE (ss.brand_id IS NULL OR l.brand_id=ss.brand_id)
                   AND (ss.model_id IS NULL OR l.model_id=ss.model_id)
+                  AND (ss.region_id IS NULL OR l.region_id=ss.region_id)
                   AND (ss.min_year IS NULL OR l.year >= ss.min_year)
                   AND (ss.max_mileage_km IS NULL OR (l.mileage_km IS NOT NULL AND l.mileage_km <= ss.max_mileage_km))
                   AND (ss.max_price_usd IS NULL OR l.price_usd <= ss.max_price_usd)

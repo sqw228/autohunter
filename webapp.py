@@ -101,6 +101,47 @@ def create_app(db, source, bot_token):
 
         return await db.get_settings(chat_id)
 
+    @app.get("/api/listings")
+    async def listings(request: Request):
+        chat_id = chat_id_from_request(request)
+        await db.add_subscriber(chat_id)
+        return await db.get_listings_for_user(chat_id)
+
+    @app.get("/api/favorites")
+    async def favorites(request: Request):
+        chat_id = chat_id_from_request(request)
+        await db.add_subscriber(chat_id)
+        return await db.get_favorites(chat_id)
+
+    @app.post("/api/favorites")
+    async def favorite(request: Request):
+        chat_id = chat_id_from_request(request)
+        await db.add_subscriber(chat_id)
+        body = await request.json()
+        await db.set_favorite(chat_id, str(body.get("source")), str(body.get("source_id")), bool(body.get("value")))
+        return {"ok": True}
+
+    @app.get("/api/stats")
+    async def stats(request: Request):
+        chat_id = chat_id_from_request(request)
+        await db.add_subscriber(chat_id)
+        return await db.get_stats(chat_id)
+
+    @app.get("/api/language")
+    async def language(request: Request):
+        chat_id = chat_id_from_request(request)
+        await db.add_subscriber(chat_id)
+        return {"language": await db.get_language(chat_id)}
+
+    @app.post("/api/language")
+    async def set_language(request: Request):
+        chat_id = chat_id_from_request(request)
+        await db.add_subscriber(chat_id)
+        body = await request.json()
+        lang = body.get("language", "ru")
+        await db.set_language(chat_id, lang)
+        return {"language": lang}
+
     @app.get("/api/catalog/brands")
     async def brands(request: Request):
         chat_id_from_request(request)

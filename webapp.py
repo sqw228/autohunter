@@ -60,6 +60,8 @@ def create_app(db, source, bot_token):
         model_name: str | None = None
         region_id: int | None = None
         region_name: str | None = None
+        transmission: str | None = None
+        fuel: str | None = None
 
     @app.get("/")
     async def index():
@@ -95,7 +97,7 @@ def create_app(db, source, bot_token):
             data.pop("region_id", None)
             data.pop("region_name", None)
 
-        for field in ("min_year", "min_discount", "max_mileage_km", "max_price_usd"):
+        for field in ("min_year", "min_discount", "max_mileage_km", "max_price_usd", "transmission", "fuel"):
             if field in data:
                 await db.update_setting(chat_id, field, data[field])
 
@@ -145,16 +147,28 @@ def create_app(db, source, bot_token):
     @app.get("/api/catalog/brands")
     async def brands(request: Request):
         chat_id_from_request(request)
-        return [{"id": value, "name": name} for name, value in await source.get_marks()]
+        try:
+            items = await source.get_marks()
+        except Exception:
+            items = []
+        return [{"id": value, "name": name} for name, value in items]
 
     @app.get("/api/catalog/brands/{brand_id}/models")
     async def models(brand_id: int, request: Request):
         chat_id_from_request(request)
-        return [{"id": value, "name": name} for name, value in await source.get_models(brand_id)]
+        try:
+            items = await source.get_models(brand_id)
+        except Exception:
+            items = []
+        return [{"id": value, "name": name} for name, value in items]
 
     @app.get("/api/catalog/regions")
     async def regions(request: Request):
         chat_id_from_request(request)
-        return [{"id": value, "name": name} for name, value in await source.get_states()]
+        try:
+            items = await source.get_states()
+        except Exception:
+            items = []
+        return [{"id": value, "name": name} for name, value in items]
 
     return app

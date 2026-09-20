@@ -341,7 +341,7 @@ async def run_bot():
     db = Database(settings.database_url)
     await db.connect()
     set_database(db)
-    source = AutoriaSource()
+    source = AutoriaSource(db)
     set_source(source)
     bot = Bot(token=settings.telegram_bot_token)
     task = asyncio.create_task(scanner_loop(bot, db, source))

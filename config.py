@@ -7,9 +7,10 @@ class Settings(BaseSettings):
     database_url: str | None = None
     min_year: int = 2012
     min_market_discount_percent: float = 15.0
-    check_interval_seconds: int = 1200
+    check_interval_seconds: int = 900
     max_listings_per_check: int = 3
     market_cache_hours: int = 12
+    autoria_retry_after_seconds: int = 900
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
 

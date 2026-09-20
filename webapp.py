@@ -65,7 +65,7 @@ def create_app(db, source, bot_token):
 
     @app.get("/")
     async def index():
-        return FileResponse(\n            WEB_DIR / "index.html",\n            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0", "Pragma": "no-cache"},\n        )
+        return FileResponse(WEB_DIR / "index.html")
 
     @app.get("/api/me")
     async def me(request: Request):

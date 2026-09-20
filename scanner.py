@@ -23,69 +23,105 @@ def fmt(x: CarListing, median: float):
 
 async def scanner_loop(bot: Bot, db: Database):
     source = AutoriaSource()
-    log.info("AutoHunter scanner started: year >= %s, discount >= %s%%, interval=%ss, max=%s",
-             settings.min_year, settings.min_market_discount_percent,
-             settings.check_interval_seconds, settings.max_listings_per_check)
+    log.info(
+        "AutoHunter scanner started: year >= %s, discount >= %s%%, interval=%ss, max=%s",
+        settings.min_year, settings.min_market_discount_percent,
+        settings.check_interval_seconds, settings.max_listings_per_check
+    )
+
     try:
         while True:
             try:
                 log.info("Starting AUTO.RIA market scan...")
                 try:
                     ids = await source.search_ids()
-                except Exception as e:
-                    if "429" in str(e):
-                        log.warning("AUTO.RIA rate limit reached; waiting before next scan")
-                    else:
-                        log.exception("AUTO.RIA search failed")
+                except RuntimeError as e:
+                    log.warning("AUTO.RIA request skipped/limited: %s", e)
+                    ids = []
+                except Exception:
+                    log.exception("AUTO.RIA search failed")
                     ids = []
 
                 log.info("AUTO.RIA market search returned %s listing IDs", len(ids))
+
                 for sid in ids:
                     try:
                         log.info("Checking listing %s", sid)
                         x = await source.get_listing(sid)
+
                         if not x:
                             log.warning("Listing %s: info response was empty/unusable", sid)
                             continue
-                        log.info("Listing %s: %s %s, year=%s, price=%s USD, mileage=%s km",
-                                 sid, x.brand or "", x.model or "", x.year, x.price_usd, x.mileage_km)
-                        if not x.year or x.year < settings.min_year or not x.price_usd or x.price_usd <= 0:
+
+                        log.info(
+                            "Listing %s: %s %s, year=%s, price=%s USD, mileage=%s km",
+                            sid, x.brand or "", x.model or "", x.year, x.price_usd, x.mileage_km
+                        )
+
+                        if (
+                            not x.year
+                            or x.year < settings.min_year
+                            or not x.price_usd
+                            or x.price_usd <= 0
+                        ):
                             log.info("Listing %s skipped by basic filters", sid)
                             continue
+
                         inserted, already_notified = await db.save_listing(x)
+
                         if already_notified:
-                            log.info("Listing %s was already notified; monitoring price but not sending duplicate", sid)
+                            log.info("Listing %s was already notified; no duplicate alert", sid)
                             continue
-                        if not inserted:
-                            log.info("Listing %s already exists; re-evaluating it because its price may have changed", sid)
+
                         key = f"ria:{x.brand_id}:{x.model_id}:{x.year}"
                         median = await db.get_market_cache(key, settings.market_cache_hours)
+
                         if median is None:
                             log.info("Getting market median for %s", key)
                             median = await source.get_market_median(x)
                             if median:
                                 await db.set_market_cache(key, median)
+
                         if not median:
                             log.warning("Listing %s: market median unavailable", sid)
                             continue
+
                         discount = (1 - x.price_usd / median) * 100
-                        log.info("Listing %s: market median=%s USD, discount=%.1f%%", sid, median, discount)
+                        log.info(
+                            "Listing %s: market median=%s USD, discount=%.1f%%",
+                            sid, median, discount
+                        )
+
                         if discount < settings.min_market_discount_percent:
                             continue
+
                         subscribers = await db.subscribers()
                         log.info("Listing %s qualifies; notifying %s subscribers", sid, len(subscribers))
+
                         for chat_id in subscribers:
                             try:
-                                await bot.send_message(chat_id, fmt(x, median), parse_mode="HTML")
+                                await bot.send_message(
+                                    chat_id,
+                                    fmt(x, median),
+                                    parse_mode="HTML"
+                                )
                             except Exception:
                                 log.exception("notify failed for chat_id=%s", chat_id)
+
                         if subscribers:
                             await db.mark_notified(x.source, x.source_id)
+
                     except Exception:
                         log.exception("listing failed: %s", sid)
+
             except Exception:
                 log.exception("scan failed")
-            log.info("Market scan finished; sleeping %s seconds", settings.check_interval_seconds)
+
+            log.info(
+                "Market scan finished; sleeping %s seconds before next page",
+                settings.check_interval_seconds
+            )
             await asyncio.sleep(settings.check_interval_seconds)
+
     finally:
         await source.close()

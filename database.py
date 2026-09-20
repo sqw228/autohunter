@@ -262,7 +262,7 @@ class Database:
             return [dict(r) for r in await c.fetch('''
                 SELECT l.*, mc.median_usd,
                        CASE WHEN mc.median_usd IS NOT NULL AND mc.median_usd > 0
-                            THEN ROUND((1 - l.price_usd / mc.median_usd) * 100, 1)
+                            THEN ROUND(((1 - l.price_usd / mc.median_usd) * 100)::numeric, 1)
                             ELSE NULL END AS discount_percent,
                        TRUE AS is_favorite
                 FROM favorites f

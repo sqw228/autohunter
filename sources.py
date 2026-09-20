@@ -103,11 +103,25 @@ class AutoriaSource:
     async def get_marks(self):
         if self._marks_cache is not None:
             return self._marks_cache
+        if self.db:
+            cached = await self.db.get_catalog_cache("brand")
+            if cached:
+                self._marks_cache = cached
+                return cached
         if not self.api_key:
             return []
-        data = await self._get_catalog(RIA_MARKS_URL, [("api_key", self.api_key)])
-        self._marks_cache = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
-        return self._marks_cache
+        try:
+            data = await self._get_catalog(RIA_MARKS_URL, [("api_key", self.api_key)])
+            items = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
+            if items:
+                self._marks_cache = items
+                if self.db:
+                    await self.db.set_catalog_cache("brand", 0, items)
+                return items
+        except Exception:
+            pass
+        return await self.db.get_catalog_cache("brand") if self.db else []
+
 
     async def get_models(self, brand_id):
         if brand_id in self._models_cache:
@@ -123,13 +137,27 @@ class AutoriaSource:
     async def get_states(self):
         if self._states_cache is not None:
             return self._states_cache
+        if self.db:
+            cached = await self.db.get_catalog_cache("region")
+            if cached:
+                self._states_cache = cached
+                return cached
         if not self.api_key:
             return []
-        data = await self._get_catalog(RIA_STATES_URL, [("api_key", self.api_key)])
-        self._states_cache = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
-        return self._states_cache
+        try:
+            data = await self._get_catalog(RIA_STATES_URL, [("api_key", self.api_key)])
+            items = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
+            if items:
+                self._states_cache = items
+                if self.db:
+                    await self.db.set_catalog_cache("region", 0, items)
+                return items
+        except Exception:
+            pass
+        return await self.db.get_catalog_cache("region") if self.db else []
 
-    async def find_catalog(self, kind, query, parent_id=0):
+
+    async def find_catalog    async def find_catalog(self, kind, query, parent_id=0):
         query = (query or "").strip().lower()
         if kind == "brand":
             items = await self.get_marks()

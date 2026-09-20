@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     max_listings_per_check: int = 1
     market_cache_hours: int = 24
     autoria_retry_after_seconds: int = 900
+    webapp_url: str | None = None
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
 

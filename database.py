@@ -250,10 +250,17 @@ class Database:
                          WHERE f.chat_id=$1 AND f.source=l.source AND f.source_id=l.source_id
                        ) AS is_favorite
                 FROM listings l
+                JOIN subscriber_settings ss ON ss.chat_id=$1
                 LEFT JOIN market_cache mc
                   ON mc.cache_key = ('ria:' || COALESCE(l.brand_id,0) || ':' ||
                                      COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
                 WHERE l.price_usd IS NOT NULL
+                  AND (ss.brand_id IS NULL OR l.brand_id=ss.brand_id)
+                  AND (ss.model_id IS NULL OR l.model_id=ss.model_id)
+                  AND (ss.region_id IS NULL OR l.city IS NOT NULL)
+                  AND (ss.min_year IS NULL OR l.year >= ss.min_year)
+                  AND (ss.max_mileage_km IS NULL OR (l.mileage_km IS NOT NULL AND l.mileage_km <= ss.max_mileage_km))
+                  AND (ss.max_price_usd IS NULL OR l.price_usd <= ss.max_price_usd)
                 ORDER BY l.first_seen_at DESC
                 LIMIT $2
             ''', chat_id, limit)]
@@ -308,9 +315,15 @@ class Database:
                             AND mc.median_usd IS NOT NULL) AS max_discount,
                   (SELECT COUNT(*) FROM favorites WHERE favorites.chat_id=$1) AS favorites_count
                 FROM listings l
+                JOIN subscriber_settings ss ON ss.chat_id=$1
                 LEFT JOIN market_cache mc
                   ON mc.cache_key = ('ria:' || COALESCE(l.brand_id,0) || ':' ||
                                      COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
+                WHERE (ss.brand_id IS NULL OR l.brand_id=ss.brand_id)
+                  AND (ss.model_id IS NULL OR l.model_id=ss.model_id)
+                  AND (ss.min_year IS NULL OR l.year >= ss.min_year)
+                  AND (ss.max_mileage_km IS NULL OR (l.mileage_km IS NOT NULL AND l.mileage_km <= ss.max_mileage_km))
+                  AND (ss.max_price_usd IS NULL OR l.price_usd <= ss.max_price_usd)
             ''', chat_id)
             return dict(r)
 

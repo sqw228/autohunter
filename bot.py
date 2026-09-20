@@ -10,6 +10,7 @@ dp = Dispatcher()
 _db = None
 _source = None
 PAGE_SIZE = 8
+_pending_text = {}
 
 
 def set_database(db):
@@ -36,12 +37,16 @@ def main_menu(enabled=True):
 def settings_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚗 Марка", callback_data="set_brand")],
+        [InlineKeyboardButton(text="✍️ Ввести марку текстом", callback_data="text_brand")],
         [InlineKeyboardButton(text="🚘 Модель", callback_data="set_model")],
+        [InlineKeyboardButton(text="✍️ Ввести модель текстом", callback_data="text_model")],
         [InlineKeyboardButton(text="📍 Регион", callback_data="set_region")],
         [InlineKeyboardButton(text="📅 Минимальный год", callback_data="set_year")],
         [InlineKeyboardButton(text="📉 Минимальная скидка", callback_data="set_discount")],
         [InlineKeyboardButton(text="🛣 Максимальный пробег", callback_data="set_mileage")],
         [InlineKeyboardButton(text="💰 Максимальная цена", callback_data="set_price")],
+        [InlineKeyboardButton(text="⚙️ КПП", callback_data="set_transmission")],
+        [InlineKeyboardButton(text="⛽ Топливо", callback_data="set_fuel")],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="back_menu")],
     ])
 
@@ -90,6 +95,8 @@ def settings_text(s):
         f"📉 Минимальная скидка: <b>{s['min_discount']:g}%</b>\n"
         f"🛣 Максимальный пробег: <b>{mileage}</b>\n"
         f"💰 Максимальная цена: <b>{price}</b>\n"
+        f"⚙️ КПП: <b>{s.get('transmission') or 'любая'}</b>\n"
+        f"⛽ Топливо: <b>{s.get('fuel') or 'любое'}</b>\n"
         "🌐 Источник: <b>AUTO.RIA</b>"
     )
 
@@ -140,6 +147,24 @@ async def settings_handler(callback: CallbackQuery):
     await show_settings(callback)
 
 
+@dp.callback_query(lambda c: c.data == "text_brand")
+async def text_brand_handler(callback: CallbackQuery):
+    _pending_text[callback.message.chat.id] = "brand"
+    await callback.message.edit_text("✍️ Напиши марку автомобиля текстом, например: <b>BMW</b> или <b>Mazda</b>.", parse_mode="HTML", reply_markup=settings_menu())
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "text_model")
+async def text_model_handler(callback: CallbackQuery):
+    s = await _db.get_settings(callback.message.chat.id)
+    if not s.get("brand_id"):
+        await callback.answer("Сначала выбери марку", show_alert=True)
+        return
+    _pending_text[callback.message.chat.id] = "model"
+    await callback.message.edit_text("✍️ Напиши модель текстом, например: <b>X5</b> или <b>CX-5</b>.", parse_mode="HTML", reply_markup=settings_menu())
+    await callback.answer()
+
+
 @dp.callback_query(lambda c: c.data == "set_brand")
 async def set_brand_handler(callback: CallbackQuery):
     await callback.answer("Загружаю марки…")
@@ -158,7 +183,7 @@ async def set_brand_handler(callback: CallbackQuery):
         )
     except Exception:
         await callback.message.edit_text(
-            "⚠️ AUTO.RIA не вернул список марок. Проверь логи Railway.",
+            "⚠️ Сервис временно недоступен, пробуем снова…",
             reply_markup=settings_menu(),
         )
 
@@ -185,7 +210,7 @@ async def set_model_handler(callback: CallbackQuery):
         )
     except Exception:
         await callback.message.edit_text(
-            "⚠️ AUTO.RIA не вернул список моделей. Проверь логи Railway.",
+            "⚠️ Сервис временно недоступен, пробуем снова…",
             reply_markup=settings_menu(),
         )
 
@@ -208,7 +233,7 @@ async def set_region_handler(callback: CallbackQuery):
         )
     except Exception:
         await callback.message.edit_text(
-            "⚠️ AUTO.RIA не вернул список регионов. Проверь логи Railway.",
+            "⚠️ Сервис временно недоступен, пробуем снова…",
             reply_markup=settings_menu(),
         )
 
@@ -341,7 +366,7 @@ async def run_bot():
     db = Database(settings.database_url)
     await db.connect()
     set_database(db)
-    source = AutoriaSource()
+    source = AutoriaSource(db)
     set_source(source)
     bot = Bot(token=settings.telegram_bot_token)
     task = asyncio.create_task(scanner_loop(bot, db, source))

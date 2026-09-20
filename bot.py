@@ -11,6 +11,7 @@ _db = None
 _source = None
 PAGE_SIZE = 8
 _pending_text = {}
+_bot = None
 
 
 def set_database(db):
@@ -80,6 +81,15 @@ def page_menu(items, prefix, page, back="settings"):
     rows.append([InlineKeyboardButton(text="🚫 Не выбирать", callback_data=f"clear_{prefix}")])
     rows.append([InlineKeyboardButton(text="◀️ Назад", callback_data=back)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def notify_empty_monitoring(chat_id: int):
+    try:
+        items = await _db.get_listings_for_user(chat_id, limit=1)
+        if not items:
+            await _bot.send_message(chat_id, "Объявлений по вашим критериям пока нет. Включен фоновый мониторинг 🔎")
+    except Exception:
+        pass
 
 
 def settings_text(s):
@@ -273,6 +283,7 @@ async def choose_brand_handler(callback: CallbackQuery):
         await callback.answer("Марка не найдена", show_alert=True)
         return
     await _db.set_brand(callback.message.chat.id, brand_id, brand[0])
+    await notify_empty_monitoring(callback.message.chat.id)
     s = await _db.get_settings(callback.message.chat.id)
     await callback.message.edit_text(settings_text(s), parse_mode="HTML", reply_markup=settings_menu())
     await callback.answer("Марка сохранена ✅")
@@ -288,6 +299,7 @@ async def choose_model_handler(callback: CallbackQuery):
         await callback.answer("Модель не найдена", show_alert=True)
         return
     await _db.set_model(callback.message.chat.id, model_id, model[0])
+    await notify_empty_monitoring(callback.message.chat.id)
     s = await _db.get_settings(callback.message.chat.id)
     await callback.message.edit_text(settings_text(s), parse_mode="HTML", reply_markup=settings_menu())
     await callback.answer("Модель сохранена ✅")
@@ -301,6 +313,7 @@ async def choose_region_handler(callback: CallbackQuery):
         await callback.answer("Регион не найден", show_alert=True)
         return
     await _db.set_region(callback.message.chat.id, region_id, region[0])
+    await notify_empty_monitoring(callback.message.chat.id)
     s = await _db.get_settings(callback.message.chat.id)
     await callback.message.edit_text(settings_text(s), parse_mode="HTML", reply_markup=settings_menu())
     await callback.answer("Регион сохранён ✅")
@@ -338,6 +351,7 @@ async def choose_setting_handler(callback: CallbackQuery):
     elif value is not None and kind in {"mileage", "price"}:
         value = int(value)
     await _db.update_setting(callback.message.chat.id, field_map[kind], value)
+    await notify_empty_monitoring(callback.message.chat.id)
     s = await _db.get_settings(callback.message.chat.id)
     await callback.message.edit_text(settings_text(s), parse_mode="HTML", reply_markup=settings_menu())
     await callback.answer("Настройка сохранена ✅")
@@ -368,6 +382,7 @@ async def text_filter_handler(message: Message):
                 return
             if len(matches) == 1:
                 await _db.set_brand(message.chat.id, matches[0][1], matches[0][0])
+                await notify_empty_monitoring(message.chat.id)
                 await message.answer(settings_text(await _db.get_settings(message.chat.id)), parse_mode="HTML", reply_markup=settings_menu())
                 return
             await message.answer("Нашёл несколько вариантов:", reply_markup=page_menu(matches, "brand", 0))
@@ -379,6 +394,7 @@ async def text_filter_handler(message: Message):
                 return
             if len(matches) == 1:
                 await _db.set_model(message.chat.id, matches[0][1], matches[0][0])
+                await notify_empty_monitoring(message.chat.id)
                 await message.answer(settings_text(await _db.get_settings(message.chat.id)), parse_mode="HTML", reply_markup=settings_menu())
                 return
             await message.answer("Нашёл несколько вариантов:", reply_markup=page_menu(matches, "model", 0))
@@ -407,7 +423,9 @@ async def run_bot():
     set_database(db)
     source = AutoriaSource(db)
     set_source(source)
+    global _bot
     bot = Bot(token=settings.telegram_bot_token)
+    _bot = bot
     task = asyncio.create_task(scanner_loop(bot, db, source))
     try:
         await dp.start_polling(bot)

@@ -63,7 +63,6 @@ class AutoriaSource:
         if wait > 0:
             raise RuntimeError(f"AUTO.RIA rate-limit cooldown active; wait {int(wait)} seconds")
         await self._wait_for_local_limit()
-        await asyncio.sleep(2)
         r = await self.client.get(url, params=params)
         self.request_times.append(loop.time())
         if r.status_code == 429:
@@ -187,7 +186,6 @@ class AutoriaSource:
 
         now = datetime.now().astimezone()
         current_page = self.page
-        self.page = (self.page + 1) % 20
         params = [
             ("api_key", self.api_key),
             ("category_id", "1"),
@@ -215,7 +213,11 @@ class AutoriaSource:
             f"region={user_settings.get('region_id') if user_settings else None}"
         )
 
-        data = await self._get(RIA_SEARCH_URL, params)
+        try:
+            data = await self._get(RIA_SEARCH_URL, params)
+        except RuntimeError as e:
+            print(f"AUTO.RIA search skipped: {e}")
+            return []
 
         if isinstance(data, list):
             ids = data[0].get("result", {}).get("search_result", {}).get("ids", []) if data and isinstance(data[0], dict) else []

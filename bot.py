@@ -1,6 +1,6 @@
 from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from config import settings
 from database import Database
 
@@ -24,10 +24,13 @@ def set_source(source):
 
 def main_menu(enabled=True):
     status = "ВКЛ" if enabled else "ВЫКЛ"
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
+        [InlineKeyboardButton(text="🚗 Открыть AutoHunter", web_app=WebAppInfo(url=settings.webapp_url))]
+        if settings.webapp_url else [],
         [InlineKeyboardButton(text=f"🔔 Уведомления: {status}", callback_data="toggle_notifications")],
         [InlineKeyboardButton(text="⚙️ Мои настройки", callback_data="settings")],
-    ])
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[row for row in rows if row])
 
 
 def settings_menu():

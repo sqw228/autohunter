@@ -38,9 +38,7 @@ def main_menu(enabled=True):
 def settings_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚗 Марка", callback_data="set_brand")],
-        [InlineKeyboardButton(text="✍️ Ввести марку текстом", callback_data="text_brand")],
         [InlineKeyboardButton(text="🚘 Модель", callback_data="set_model")],
-        [InlineKeyboardButton(text="✍️ Ввести модель текстом", callback_data="text_model")],
         [InlineKeyboardButton(text="📍 Регион", callback_data="set_region")],
         [InlineKeyboardButton(text="📅 Минимальный год", callback_data="set_year")],
         [InlineKeyboardButton(text="📉 Минимальная скидка", callback_data="set_discount")],

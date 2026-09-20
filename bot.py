@@ -162,7 +162,7 @@ async def settings_handler(callback: CallbackQuery):
 @dp.callback_query(lambda c: c.data == "text_brand")
 async def text_brand_handler(callback: CallbackQuery):
     _pending_text[callback.message.chat.id] = "brand"
-    await callback.message.edit_text("✍️ Напиши марку автомобиля текстом, например: <b>BMW</b> или <b>Mazda</b>.", parse_mode="HTML", reply_markup=settings_menu())
+    await callback.message.edit_text("✍️ <b>Поиск марки вручную</b>\n\nНапиши марку автомобиля, например: <b>BMW</b> или <b>Mazda</b>.\n\nНажми «Назад», чтобы вернуться к настройкам.", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="set_brand")]]))
     await callback.answer()
 
 
@@ -173,7 +173,7 @@ async def text_model_handler(callback: CallbackQuery):
         await callback.answer("Сначала выбери марку", show_alert=True)
         return
     _pending_text[callback.message.chat.id] = "model"
-    await callback.message.edit_text("✍️ Напиши модель текстом, например: <b>X5</b> или <b>CX-5</b>.", parse_mode="HTML", reply_markup=settings_menu())
+    await callback.message.edit_text("✍️ <b>Поиск модели вручную</b>\n\nНапиши модель, например: <b>X5</b> или <b>CX-5</b>.\n\nНажми «Назад», чтобы вернуться к выбору модели.", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="set_model")]]))
     await callback.answer()
 
 
@@ -408,13 +408,13 @@ async def text_filter_handler(message: Message):
         return await fallback_handler(message)
     query = (message.text or "").strip()
     if not query:
-        await message.answer("Напиши название текстом, например: BMW", reply_markup=settings_menu())
+        await message.answer("Напиши название текстом, например: BMW", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="set_brand" if kind == "brand" else "set_model")]]))
         return
     try:
         if kind == "brand":
             matches = await _source.find_catalog("brand", query)
             if not matches:
-                await message.answer("Марку не нашли. Попробуй другое написание, например BMW или Mazda.", reply_markup=settings_menu())
+                await message.answer("Марку не нашли. Попробуй другое написание, например BMW или Mazda.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="set_brand")]]))
                 return
             if len(matches) == 1:
                 await _db.set_brand(message.chat.id, matches[0][1], matches[0][0])
@@ -426,7 +426,7 @@ async def text_filter_handler(message: Message):
             s = await _db.get_settings(message.chat.id)
             matches = await _source.find_catalog("model", query, int(s["brand_id"]))
             if not matches:
-                await message.answer("Модель не нашли. Попробуй другое написание.", reply_markup=settings_menu())
+                await message.answer("Модель не нашли. Попробуй другое написание.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="set_model")]]))
                 return
             if len(matches) == 1:
                 await _db.set_model(message.chat.id, matches[0][1], matches[0][0])

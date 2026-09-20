@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS favorites (
  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
  PRIMARY KEY(chat_id, source, source_id)
 );
+CREATE TABLE IF NOT EXISTS catalog_cache (kind TEXT NOT NULL, parent_id INTEGER NOT NULL DEFAULT 0, item_id INTEGER NOT NULL, name TEXT NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(kind,parent_id,item_id));
 CREATE TABLE IF NOT EXISTS app_preferences (
  chat_id BIGINT PRIMARY KEY REFERENCES subscribers(chat_id) ON DELETE CASCADE,
  language TEXT NOT NULL DEFAULT 'ru'
@@ -312,6 +313,17 @@ class Database:
                                      COALESCE(l.model_id,0) || ':' || COALESCE(l.year,0))
             ''', chat_id)
             return dict(r)
+
+    async def set_catalog_cache(self, kind, parent_id, items):
+        async with self.pool.acquire() as c:
+            await c.execute('DELETE FROM catalog_cache WHERE kind=$1 AND parent_id=$2', kind, int(parent_id))
+            if items:
+                await c.executemany('INSERT INTO catalog_cache(kind,parent_id,item_id,name) VALUES($1,$2,$3,$4)', [(kind,int(parent_id),int(i),str(n)) for n,i in items])
+
+    async def get_catalog_cache(self, kind, parent_id=0):
+        async with self.pool.acquire() as c:
+            rows = await c.fetch('SELECT name,item_id FROM catalog_cache WHERE kind=$1 AND parent_id=$2 ORDER BY name', kind, int(parent_id))
+            return [(r['name'], int(r['item_id'])) for r in rows]
 
     async def get_language(self, chat_id: int):
         async with self.pool.acquire() as c:

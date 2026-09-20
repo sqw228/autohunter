@@ -32,8 +32,9 @@ class CarListing:
 
 
 class AutoriaSource:
-    def __init__(self):
+    def __init__(self, db=None):
         self.api_key = settings.autoria_api_key
+        self.db = db
         self.client = httpx.AsyncClient(timeout=20.0)
         self.retry_after_until = 0.0
         self.page = 0
@@ -105,22 +106,47 @@ class AutoriaSource:
     async def get_marks(self):
         if self._marks_cache is not None:
             return self._marks_cache
-        if not self.api_key:
+        if self.db:
+            cached = await self.db.get_catalog_cache("brand", 0)
+            if cached:
+                self._marks_cache = cached
+                return cached
+        if not self.api_key or self.retry_after_until > asyncio.get_running_loop().time():
             return []
-        data = await self._get_catalog(RIA_MARKS_URL, [("api_key", self.api_key)])
-        self._marks_cache = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
-        return self._marks_cache
+        try:
+            data = await self._get_catalog(RIA_MARKS_URL, [("api_key", self.api_key)])
+            items = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
+            if items:
+                self._marks_cache = items
+                if self.db:
+                    await self.db.set_catalog_cache("brand", 0, items)
+            return items
+        except Exception as e:
+            print(f"AUTO.RIA marks unavailable: {e}")
+            return await self.db.get_catalog_cache("brand", 0) if self.db else []
 
     async def get_models(self, brand_id):
+        brand_id = int(brand_id)
         if brand_id in self._models_cache:
             return self._models_cache[brand_id]
-        if not self.api_key:
+        if self.db:
+            cached = await self.db.get_catalog_cache("model", brand_id)
+            if cached:
+                self._models_cache[brand_id] = cached
+                return cached
+        if not self.api_key or self.retry_after_until > asyncio.get_running_loop().time():
             return []
-        url = f"https://developers.ria.com/auto/categories/1/marks/{brand_id}/models"
-        data = await self._get_catalog(url, [("api_key", self.api_key)])
-        models = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
-        self._models_cache[brand_id] = models
-        return models
+        try:
+            url = f"https://developers.ria.com/auto/categories/1/marks/{brand_id}/models"
+            data = await self._get_catalog(url, [("api_key", self.api_key)])
+            models = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
+            self._models_cache[brand_id] = models
+            if self.db and models:
+                await self.db.set_catalog_cache("model", brand_id, models)
+            return models
+        except Exception as e:
+            print(f"AUTO.RIA models unavailable: {e}")
+            return await self.db.get_catalog_cache("model", brand_id) if self.db else []
 
     async def get_states(self):
         if self._states_cache is not None:

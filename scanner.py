@@ -43,7 +43,7 @@ async def scanner_loop(bot: Bot, db: Database, source: AutoriaSource):
                     for user in users:
                         key = (
                             user['min_year'], user.get('brand_id'), user.get('model_id'),
-                            user.get('region_id')
+                            user.get('region_id'), user.get('transmission'), user.get('fuel')
                         )
                         unique.setdefault(key, []).append(user)
 
@@ -87,6 +87,10 @@ async def scanner_loop(bot: Bot, db: Database, source: AutoriaSource):
                                 if search_settings.get('brand_id') and x.brand_id != search_settings['brand_id']:
                                     continue
                                 if search_settings.get('model_id') and x.model_id != search_settings['model_id']:
+                                    continue
+                                if search_settings.get('transmission') and search_settings['transmission'].lower() not in (x.transmission or '').lower():
+                                    continue
+                                if search_settings.get('fuel') and search_settings['fuel'].lower() not in (x.fuel or '').lower():
                                     continue
 
                                 await db.save_listing(x)

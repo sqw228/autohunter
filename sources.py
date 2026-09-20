@@ -126,13 +126,26 @@ class AutoriaSource:
     async def get_models(self, brand_id):
         if brand_id in self._models_cache:
             return self._models_cache[brand_id]
+        if self.db:
+            cached = await self.db.get_catalog_cache("model", int(brand_id))
+            if cached:
+                self._models_cache[brand_id] = cached
+                return cached
         if not self.api_key:
             return []
         url = f"https://developers.ria.com/auto/categories/1/marks/{brand_id}/models"
-        data = await self._get_catalog(url, [("api_key", self.api_key)])
-        models = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
-        self._models_cache[brand_id] = models
-        return models
+        try:
+            data = await self._get(url, [("api_key", self.api_key)])
+            items = sorted(self._catalog_items(data), key=lambda x: x[0].lower())
+            if items:
+                self._models_cache[brand_id] = items
+                if self.db:
+                    await self.db.set_catalog_cache("model", int(brand_id), items)
+                return items
+        except Exception:
+            pass
+        return await self.db.get_catalog_cache("model", int(brand_id)) if self.db else []
+
 
     async def get_states(self):
         if self._states_cache is not None:
@@ -157,7 +170,7 @@ class AutoriaSource:
         return await self.db.get_catalog_cache("region") if self.db else []
 
 
-    async def find_catalog    async def find_catalog(self, kind, query, parent_id=0):
+    async def find_catalog(self, kind, query, parent_id=0):
         query = (query or "").strip().lower()
         if kind == "brand":
             items = await self.get_marks()

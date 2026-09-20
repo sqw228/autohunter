@@ -105,11 +105,45 @@ function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 async function loadHome(){try{const [items,s]=await Promise.all([api('/api/listings'),api('/api/stats')]);renderListings(items,'listings');document.getElementById('found').textContent=s.found_today||0;document.getElementById('below').textContent=s.below_market_today||0;document.getElementById('avg').textContent=s.avg_discount==null?'—':Number(s.avg_discount).toFixed(1)+'%';document.getElementById('max').textContent=s.max_discount==null?'—':Number(s.max_discount).toFixed(1)+'%'}catch(e){document.getElementById('listings').innerHTML='<div class="card empty">'+tr('service')+'</div>'}}
 async function loadFavorites(){try{renderListings(await api('/api/favorites'),'favList')}catch(e){document.getElementById('favList').innerHTML='<div class="card empty">'+tr('service')+'</div>'}}
 async function fav(source,id,value){await api('/api/favorites',{method:'POST',body:JSON.stringify({source,source_id:id,value})});loadHome();loadFavorites()}
-async function loadCatalogs(){[brands,regions]=await Promise.all([api('/api/catalog/brands'),api('/api/catalog/regions')]);const b=document.getElementById('brand');brands.forEach(x=>b.add(new Option(x.name,x.id)));const r=document.getElementById('region');regions.forEach(x=>r.add(new Option(x.name,x.id)));b.addEventListener('change',loadModels)}
-async function loadModels(){const id=document.getElementById('brand').value,m=document.getElementById('model');m.innerHTML='<option value="">'+tr('anyModel')+'</option>';m.disabled=!id;if(id)(await api('/api/catalog/brands/'+id+'/models')).forEach(x=>m.add(new Option(x.name,x.id)))}
-function applySettings(s){settings=s;document.getElementById('brand').value=s.brand_id||'';document.getElementById('region').value=s.region_id||'';document.getElementById('year').value=s.min_year;document.getElementById('discount').value=s.min_discount;document.getElementById('mileage').value=s.max_mileage_km||'';document.getElementById('price').value=s.max_price_usd||'';document.getElementById('transmission').value=s.transmission||'';document.getElementById('fuel').value=s.fuel||'';if(s.brand_id)loadModels().then(()=>document.getElementById('model').value=s.model_id||'')}
+async function loadCatalogs(){
+  [brands,regions]=await Promise.all([api('/api/catalog/brands'),api('/api/catalog/regions')]);
+  const b=document.getElementById('brand');
+  b.innerHTML='<option value="">'+tr('anyBrand')+'</option>';
+  brands.forEach(x=>b.add(new Option(x.name,x.id)));
+  const r=document.getElementById('region');
+  r.innerHTML='<option value="">'+tr('allRegions')+'</option>';
+  regions.forEach(x=>r.add(new Option(x.name,x.id)));
+  b.onchange=loadModels;
+  if(settings?.brand_id){
+    b.value=String(settings.brand_id);
+    await loadModels();
+  }
+  if(settings) applySettingsValues(settings);
+}
+async function loadModels(){
+  const id=document.getElementById('brand').value,m=document.getElementById('model');
+  m.innerHTML='<option value="">'+tr('anyModel')+'</option>';
+  m.disabled=!id;
+  if(id){
+    const items=await api('/api/catalog/brands/'+id+'/models');
+    items.forEach(x=>m.add(new Option(x.name,x.id)));
+  }
+  if(settings?.model_id) m.value=String(settings.model_id);
+}
+function applySettingsValues(s){
+  document.getElementById('brand').value=s.brand_id?String(s.brand_id):'';
+  document.getElementById('region').value=s.region_id?String(s.region_id):'';
+  document.getElementById('model').value=s.model_id?String(s.model_id):'';
+  document.getElementById('year').value=s.min_year;
+  document.getElementById('discount').value=s.min_discount;
+  document.getElementById('mileage').value=s.max_mileage_km||'';
+  document.getElementById('price').value=s.max_price_usd||'';
+  document.getElementById('transmission').value=s.transmission||'';
+  document.getElementById('fuel').value=s.fuel||'';
+}
+function applySettings(s){settings=s;applySettingsValues(s)}
 async function save(){try{document.getElementById('status').textContent='…';const bid=Number(document.getElementById('brand').value)||null,mid=Number(document.getElementById('model').value)||null,rid=Number(document.getElementById('region').value)||null;const bo=brands.find(x=>x.id===bid),mo=[...document.getElementById('model').options].find(x=>Number(x.value)===mid),ro=regions.find(x=>x.id===rid);applySettings(await api('/api/settings',{method:'POST',body:JSON.stringify({min_year:Number(document.getElementById('year').value),min_discount:Number(document.getElementById('discount').value),max_mileage_km:document.getElementById('mileage').value?Number(document.getElementById('mileage').value):null,max_price_usd:document.getElementById('price').value?Number(document.getElementById('price').value):null,transmission:document.getElementById('transmission').value||null,fuel:document.getElementById('fuel').value||null,brand_id:bid,brand_name:bo?.name||null,model_id:mid,model_name:mo?.text||null,region_id:rid,region_name:ro?.name||null})}));document.getElementById('status').textContent=tr('saved')}catch(e){document.getElementById('status').textContent=tr('service')}}
 async function setLang(l){lang=l;await api('/api/language',{method:'POST',body:JSON.stringify({language:l})});applyText();document.getElementById('settingsStatus').textContent=tr('saved');loadHome()}
-(async()=>{try{if(!tg.initData)throw Error();lang=(await api('/api/language')).language||'ru';applyText();const me=await api('/api/me');applySettings(me);await loadHome();try{await loadCatalogs()}catch(e){console.warn('Catalog loading failed:',e);document.getElementById('status').textContent=tr('error')} }catch(e){console.error('Mini App startup error:',e);document.body.innerHTML='<div class="card empty"><b>'+tr('error')+'</b><br><small>'+esc(e?.message||String(e))+'</small></div>'}})();
+(async()=>{try{if(!tg.initData)throw Error();lang=(await api('/api/language')).language||'ru';applyText();const me=await api('/api/me');settings=me;await loadHome();try{await loadCatalogs();applySettingsValues(me)}catch(e){console.warn('Catalog loading failed:',e);document.getElementById('status').textContent=tr('error')} }catch(e){console.error('Mini App startup error:',e);document.body.innerHTML='<div class="card empty"><b>'+tr('error')+'</b><br><small>'+esc(e?.message||String(e))+'</small></div>'}})();
 </script>
 </body></html>

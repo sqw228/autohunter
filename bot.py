@@ -57,6 +57,8 @@ def choices_menu(kind):
         "discount": [("10%", 10), ("15%", 15), ("20%", 20), ("25%", 25), ("30%", 30)],
         "mileage": [("Без ограничения", None), ("100 000 км", 100000), ("150 000 км", 150000), ("200 000 км", 200000), ("250 000 км", 250000)],
         "price": [("Без ограничения", None), ("$10 000", 10000), ("$20 000", 20000), ("$30 000", 30000), ("$50 000", 50000)],
+        "transmission": [("Любая", None), ("Автомат", "автомат"), ("Механика", "механика")],
+        "fuel": [("Любое", None), ("Бензин", "бензин"), ("Дизель", "дизель"), ("Электро", "электро"), ("Гибрид", "гибрид")],
     }
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=f"choose_{kind}_{value if value is not None else 'none'}")]
@@ -317,7 +319,7 @@ async def clear_catalog_handler(callback: CallbackQuery):
     await callback.answer("Фильтр сброшен")
 
 
-@dp.callback_query(lambda c: c.data in {"set_year", "set_discount", "set_mileage", "set_price"})
+@dp.callback_query(lambda c: c.data in {"set_year", "set_discount", "set_mileage", "set_price", "set_transmission", "set_fuel"})
 async def setting_choice_handler(callback: CallbackQuery):
     kind = callback.data.removeprefix("set_")
     await callback.message.edit_text("Выбери значение:", reply_markup=choices_menu(kind))
@@ -328,7 +330,9 @@ async def setting_choice_handler(callback: CallbackQuery):
 async def choose_setting_handler(callback: CallbackQuery):
     _, kind, raw = callback.data.split("_", 2)
     field_map = {"year": "min_year", "discount": "min_discount", "mileage": "max_mileage_km", "price": "max_price_usd"}
-    value = None if raw == "none" else float(raw)
+    value = None if raw == "none" else raw
+    if kind in {"year", "discount", "mileage", "price"} and value is not None:
+        value = float(value)
     if kind == "year":
         value = int(value)
     elif value is not None and kind in {"mileage", "price"}:
@@ -345,6 +349,41 @@ async def back_menu_handler(callback: CallbackQuery):
     s = await _db.get_settings(callback.message.chat.id)
     await callback.message.edit_text(menu_text(enabled, s), parse_mode="HTML", reply_markup=main_menu(enabled))
     await callback.answer()
+
+
+@dp.message()
+async def text_filter_handler(message: Message):
+    kind = _pending_text.pop(message.chat.id, None)
+    if kind not in {"brand", "model"}:
+        return await fallback_handler(message)
+    query = (message.text or "").strip()
+    if not query:
+        await message.answer("Напиши название текстом, например: BMW", reply_markup=settings_menu())
+        return
+    try:
+        if kind == "brand":
+            matches = await _source.find_catalog("brand", query)
+            if not matches:
+                await message.answer("Марку не нашли. Попробуй другое написание, например BMW или Mazda.", reply_markup=settings_menu())
+                return
+            if len(matches) == 1:
+                await _db.set_brand(message.chat.id, matches[0][1], matches[0][0])
+                await message.answer(settings_text(await _db.get_settings(message.chat.id)), parse_mode="HTML", reply_markup=settings_menu())
+                return
+            await message.answer("Нашёл несколько вариантов:", reply_markup=page_menu(matches, "brand", 0))
+        else:
+            s = await _db.get_settings(message.chat.id)
+            matches = await _source.find_catalog("model", query, int(s["brand_id"]))
+            if not matches:
+                await message.answer("Модель не нашли. Попробуй другое написание.", reply_markup=settings_menu())
+                return
+            if len(matches) == 1:
+                await _db.set_model(message.chat.id, matches[0][1], matches[0][0])
+                await message.answer(settings_text(await _db.get_settings(message.chat.id)), parse_mode="HTML", reply_markup=settings_menu())
+                return
+            await message.answer("Нашёл несколько вариантов:", reply_markup=page_menu(matches, "model", 0))
+    except Exception:
+        await message.answer("⚠️ Сервис временно недоступен, пробуем снова…", reply_markup=settings_menu())
 
 
 @dp.message()

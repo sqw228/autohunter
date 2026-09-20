@@ -223,12 +223,31 @@ async def set_model_handler(callback: CallbackQuery):
     if not s.get('brand_id'):
         await callback.answer("Сначала выбери марку", show_alert=True)
         return
+    _pending_text[callback.message.chat.id] = "model"
+    await callback.message.edit_text(
+        "🚘 Напиши модель текстом, например: <b>X5</b> или <b>CX-5</b>.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Выбрать из списка", callback_data="model_list")],
+            [InlineKeyboardButton(text="◀️ Назад", callback_data="settings")],
+        ]),
+    )
+    await callback.answer()
+
+
+@dp.callback_query(lambda c: c.data == "model_list")
+async def model_list_handler(callback: CallbackQuery):
+    _pending_text.pop(callback.message.chat.id, None)
+    s = await _db.get_settings(callback.message.chat.id)
+    if not s.get('brand_id'):
+        await callback.answer("Сначала выбери марку", show_alert=True)
+        return
     await callback.answer("Загружаю модели…")
     try:
         items = await _source.get_models(s['brand_id'])
         if not items:
             await callback.message.edit_text(
-                "Не удалось получить список моделей из AUTO.RIA. Попробуй ещё раз через минуту.",
+                "⚠️ Сервис временно недоступен, пробуем снова…",
                 reply_markup=settings_menu(),
             )
             return
